@@ -4,14 +4,14 @@
 
 Implement the executable backend for FCUT-VLA stages B and C: deterministic
 LIBERO failure collection and paired counterfactual utility-label generation.
-The backend reuses the CausalVLA evaluation stack rather than creating another
-simulator or checkpoint format. Utility-ranker training, personalized repair
+The backend integrates official LeRobot and LIBERO directly inside FGKT-VLA,
+without importing another research project or creating another simulator/checkpoint format. Utility-ranker training, personalized repair
 evaluation, continual orchestration, and real-robot execution remain outside
 this design.
 
 ## Reused evaluation contract
 
-The GPU backend uses the same validated conventions as CausalVLA:
+The GPU backend uses the following pinned FGKT-VLA conventions:
 
 - LeRobot 0.6.1 and its SmolVLA policy loader;
 - synchronous LIBERO vector environments;
@@ -22,8 +22,8 @@ The GPU backend uses the same validated conventions as CausalVLA:
 - deterministic seeds and complete `eval_info.json` outputs;
 - no parallel simulator, checkpoint serializer, or dataset implementation.
 
-The FCUT-VLA adapter invokes the existing CausalVLA evaluator with an episode
-recorder hook. The hook observes evaluator inputs and outputs but does not
+The FGKT-VLA evaluator is implemented in this repository using official LeRobot
+and LIBERO APIs with an episode recorder hook. The hook observes evaluator inputs and outputs but does not
 change actions, resets, termination, success computation, or environment
 ordering.
 
@@ -144,7 +144,7 @@ utility computation, `no_match`, shard hashes, immutable completion, and resume.
 
 An integration test runs stages B and C against a deterministic fake evaluator,
 then verifies byte-stable artifacts across two output roots. A GPU preflight
-test checks the rendered CausalVLA/LeRobot command, pinned policy revision,
+test checks the rendered FGKT-VLA/LeRobot command, pinned policy revision,
 rename map, EGL, synchronous environments, and output locations without
 allocating GPU memory. Real GPU execution is enabled only after all fixture and
 preflight tests pass.
@@ -162,5 +162,5 @@ preflight tests pass.
   `no_match`;
 - incomplete or corrupted runs can resume safely, while completed runs cannot
   be overwritten;
-- the GPU command uses the validated CausalVLA evaluation path and explicitly
+- the GPU command uses the FGKT-VLA evaluation entry point and explicitly
   pins all environment- and policy-defining inputs.

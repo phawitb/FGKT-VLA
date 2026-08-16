@@ -1,9 +1,9 @@
 # RTX 4090 execution guide
 
-This workflow reuses the LeRobot/LIBERO conventions validated in CausalVLA:
-LeRobot 0.6.1, `lerobot/libero_spatial_image`, `MUJOCO_GL=egl`, paired evaluation
-seeds, and Hugging Face namespace `phawitbinabik`. Tokens must remain in the
-user credential store and must never be written to this repository.
+This is an independent FGKT-VLA workflow using official LeRobot 0.6.1,
+`lerobot/libero_spatial_image`, `MUJOCO_GL=egl`, paired evaluation seeds, and
+Hugging Face namespace `phawitbinabik`. It does not import or invoke CausalVLA.
+Tokens remain in the user credential store and are never written here.
 
 ## 1. Server environment
 
@@ -12,15 +12,14 @@ git clone https://github.com/phawitb/FGKT-VLA.git
 cd FGKT-VLA
 git switch codex/fcut-vla-paper
 
-python3.11 -m venv .venv
-source .venv/bin/activate
+conda create -y -n fedvla python=3.12 pip
+conda activate fedvla
 python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 
-# Reuse the same LeRobot checkout/version as CausalVLA.
-git clone https://github.com/huggingface/lerobot.git ../lerobot
-git -C ../lerobot checkout v0.6.1
-python -m pip install -e '../lerobot[smolvla,libero]'
+# Install an independent official LeRobot checkout.
+git clone --branch v0.6.1 --depth 1 https://github.com/huggingface/lerobot.git .deps/lerobot
+python -m pip install -e './.deps/lerobot[smolvla,dataset,libero]'
 
 hf auth whoami
 nvidia-smi
@@ -48,19 +47,19 @@ Use a fresh output root for another preflight, or add `--resume` to reopen an
 incomplete planned run. A directory containing `COMPLETE` is immutable and is
 never overwritten.
 
-## 3. Stage A: client adapter training
+## 3. RTX 4090 smoke test
 
 Inspect `command.sh` from the dry run, then launch through the entry point:
 
 ```bash
 python scripts/train_client_adapter.py \
-  --config configs/gpu/development.yaml \
+  --config configs/gpu/smolvla_smoke.yaml \
   --output-root runs
 ```
 
-This launches `lerobot-train` with SmolVLA, the public LIBERO image dataset,
-Hub upload under `phawitbinabik/fcut-vla-dev-client-adapter`, EGL rendering,
-and a run-local checkpoint directory.
+This runs the same bounded 10-step training contract that passed on the Mac,
+changing only `mps` to `cuda`. It does not upload to the Hub. Verify the step-10
+checkpoint before running `configs/gpu/development.yaml`.
 
 ## 4. Stages B-D safety status
 
@@ -85,7 +84,7 @@ python scripts/train_client_adapter.py \
   --resume
 
 # Inspect logs and the exact rendered command.
-find runs/fcut-vla-development -name command.sh -o -name stderr.log -o -name stdout.log
+find runs/fgkt-vla-development -name command.sh -o -name stderr.log -o -name stdout.log
 ```
 
 Never delete or edit an existing completed run. Change the configuration to

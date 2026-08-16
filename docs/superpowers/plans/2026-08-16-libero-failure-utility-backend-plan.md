@@ -2,15 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build deterministic Stage B failure artifacts and Stage C paired counterfactual utility labels by adapting the validated CausalVLA/LeRobot evaluator.
+**Goal:** Build deterministic Stage B failure artifacts and Stage C paired counterfactual utility labels with an independent FGKT-VLA evaluator using official LeRobot/LIBERO APIs.
 
-**Architecture:** Pure Python schema, resolution, pairing, and privacy modules operate without simulator dependencies and are tested on fixture evaluator output. Thin job modules consume immutable plans and invoke an evaluator adapter; the GPU adapter renders the existing CausalVLA evaluation command and records hashes, while a deterministic fixture adapter proves the complete Mac pipeline.
+**Architecture:** Pure Python schema, resolution, pairing, and privacy modules operate without simulator dependencies and are tested on fixture evaluator output. Thin job modules consume immutable plans and invoke an FGKT-VLA evaluator adapter; the GPU adapter calls official LeRobot/LIBERO APIs and records hashes, while a deterministic fixture adapter proves the complete Mac pipeline.
 
-**Tech Stack:** Python 3.11+, dataclasses, JSON/JSON Lines, SHA-256, PyYAML, pytest, LeRobot 0.6.1, LIBERO, SmolVLA, CausalVLA evaluator.
+**Tech Stack:** Python 3.12, dataclasses, JSON/JSON Lines, SHA-256, PyYAML, pytest, official LeRobot 0.6.1, LIBERO, and SmolVLA.
 
 ## Global Constraints
 
-- Reuse LeRobot 0.6.1 and the CausalVLA evaluator; do not create another simulator or checkpoint format.
+- Use official LeRobot 0.6.1 directly; do not import or invoke CausalVLA and do not create another simulator/checkpoint format.
 - GPU rendering uses `MUJOCO_GL=egl`, synchronous LIBERO environments, and the wrist-image rename map.
 - Every policy is identified by Hugging Face repository plus immutable revision under `phawitbinabik`.
 - Baseline and candidate evaluation keys must match task, seed, initial-state index/hash, episode budget, and environment settings exactly.
@@ -206,7 +206,7 @@ git add src/fcut_vla/utility/privacy.py src/fcut_vla/jobs/build_utility_labels.p
 git commit -m "feat: build privacy-safe paired utility labels"
 ```
 
-### Task 5: Integrate fixture evaluator, CausalVLA command adapter, and resumable jobs
+### Task 5: Integrate fixture evaluator, independent LeRobot adapter, and resumable jobs
 
 **Files:**
 - Create: `src/fcut_vla/libero/evaluator.py`
@@ -220,7 +220,7 @@ git commit -m "feat: build privacy-safe paired utility labels"
 
 **Interfaces:**
 - Consumes: Tasks 1–4 and the existing six GPU entry points.
-- Produces: `FixtureEvaluator`, `CausalVLAEvaluator.render_command(...)`, executable Stage B/C job modules, immutable output tree, and removal of the Stage B/C execution guard only.
+- Produces: `FixtureEvaluator`, `FgktLiberoEvaluator.render_command(...)`, executable Stage B/C job modules, immutable output tree, and removal of the Stage B/C execution guard only.
 
 - [ ] **Step 1: Write failing fixture integration and command tests**
 
@@ -232,8 +232,8 @@ def test_fixture_backend_is_byte_stable_and_resume_safe(tmp_path):
     assert first.label_sha256 == second.label_sha256
     assert first.labels[0]["stratum"] == "no_match"
 
-def test_gpu_command_pins_causalvla_contract():
-    command = CausalVLAEvaluator(config).render_command(plan)
+def test_gpu_command_pins_fgkt_libero_contract():
+    command = FgktLiberoEvaluator(config).render_command(plan)
     assert "MUJOCO_GL=egl" in command
     assert "--eval.use_async_envs=false" in command
     assert 'observation.images.wrist_image' in command
@@ -247,7 +247,7 @@ Expected: FAIL because evaluator adapters do not exist.
 
 - [ ] **Step 3: Implement adapters and resumable stage execution**
 
-`FixtureEvaluator` reads the committed JSONL fixture through the same episode parser as GPU data. `CausalVLAEvaluator` renders an argument list invoking the configured CausalVLA `scripts/eval_ood.py`, pinned policy repo/revision, LIBERO task, rename map, synchronous env, seed, episode count, and run-local output directory. Use `subprocess.run(argv, env={..., "MUJOCO_GL": "egl"})`, never `shell=True`. Validate `eval_info.json` and recorded shard hashes before marking a shard complete. Stage B writes task resolution then failures; Stage C writes pair plan then labels. On resume, validate all frozen hashes and skip only verified complete shards. Remove the execution guard for `generate_failures` and `build_utility_labels`; retain it for stages D–F.
+`FixtureEvaluator` reads committed JSONL fixtures through the same episode parser as GPU data. `FgktLiberoEvaluator` invokes an FGKT-VLA entry point that uses official LeRobot/LIBERO APIs with a pinned policy repo/revision, LIBERO task, rename map, synchronous env, seed, episode count, and run-local output directory. Use `subprocess.run(argv, env={..., "MUJOCO_GL": "egl"})`, never `shell=True`. Validate `eval_info.json` and recorded shard hashes before marking a shard complete. Stage B writes task resolution then failures; Stage C writes pair plan then labels. On resume, validate all frozen hashes and skip only verified complete shards. Remove the execution guard for `generate_failures` and `build_utility_labels`; retain it for stages D–F.
 
 - [ ] **Step 4: Run Mac integration, all dry runs, and full suite**
 
@@ -266,7 +266,7 @@ Expected: integration and full suites PASS; all commands emit JSON plans without
 
 - [ ] **Step 5: Update server guide with exact Stage B/C commands and outputs**
 
-Document environment discovery for the local CausalVLA checkout, pinned revisions, preflight, real Stage B/C commands, expected hashes/files, resume, and transfer back to the Mac. State explicitly that stages D–F remain guarded until their backends are implemented.
+Document installation of the independent official LeRobot checkout, pinned revisions, preflight, real Stage B/C commands, expected hashes/files, resume, and transfer back to the Mac. State explicitly that stages D–F remain guarded until their backends are implemented.
 
 - [ ] **Step 6: Commit and push**
 

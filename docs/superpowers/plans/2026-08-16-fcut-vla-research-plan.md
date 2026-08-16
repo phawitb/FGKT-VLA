@@ -6,7 +6,7 @@
 
 **Architecture:** The project separates benchmark manifests, client adapters, failure contexts, counterfactual utility labels, ranking models, repair/consolidation policies, evaluation, and manuscript generation. Mac-compatible synthetic and tiny-data tests gate every component before manually dispatched RTX 4090 jobs. Results are imported from immutable run manifests into tables and figures rather than copied manually.
 
-**Tech Stack:** Python 3.11, PyTorch, Hugging Face LeRobot/SmolVLA, LIBERO, PEFT LoRA, Hydra/OmegaConf or YAML configurations, pytest, NumPy, pandas, scipy, statsmodels, matplotlib/seaborn, Weights & Biases optional, LaTeX with BibTeX.
+**Tech Stack:** Python 3.12, PyTorch, Hugging Face LeRobot/SmolVLA, LIBERO, PEFT LoRA, Hydra/OmegaConf or YAML configurations, pytest, NumPy, pandas, scipy, statsmodels, matplotlib/seaborn, Weights & Biases optional, LaTeX with BibTeX.
 
 ## Global Constraints
 
@@ -343,7 +343,7 @@ git commit -m "feat: gate consolidation and verify CPU smoke pipeline"
 
 ### Task 8: SmolVLA/LIBERO GPU job entry points
 
-Reuse the validated LeRobot 0.6.1, LIBERO environment, deterministic evaluation, resume, and logging conventions documented in `docs/causalvla_reuse.md` and `/Users/phawit/Projects/CausalVLA`. Do not create a parallel simulator or checkpoint format.
+Use an independent official LeRobot 0.6.1 checkout, LIBERO environment, deterministic evaluation, resume, and logging conventions documented in `docs/lerobot_runtime.md`. Do not import or invoke CausalVLA, and do not create a parallel simulator or checkpoint format.
 
 **Files:**
 - Create: `scripts/train_client_adapter.py`

@@ -1,7 +1,13 @@
-experiment_name: fcut-vla-main
+experiment_name: fgkt-vla-main
 backbone: smolvla
 hf_namespace: phawitbinabik
-model_prefix: fcut-vla-main
+model_prefix: fgkt-vla-main
+device: cuda
+batch_size: 8
+steps: 50000
+save_freq: 10000
+env_eval_freq: 0
+push_to_hub: true
 dataset_repo_id: lerobot/libero_spatial_image
 benchmark_manifest: manifests/fedlibero_fail_v1.yaml
 train_seeds: [11, 23, 37]

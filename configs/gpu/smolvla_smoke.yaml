@@ -1,21 +1,21 @@
-experiment_name: fgkt-vla-development
+experiment_name: fgkt-vla-gpu-smoke
 backbone: smolvla
 hf_namespace: phawitbinabik
-model_prefix: fgkt-vla-dev
-device: cuda
-batch_size: 8
-steps: 1000
-save_freq: 500
-env_eval_freq: 0
-push_to_hub: true
+model_prefix: fgkt-vla-gpu-smoke
 dataset_repo_id: lerobot/libero_spatial_image
 benchmark_manifest: manifests/fedlibero_fail_v1.yaml
+device: cuda
+batch_size: 2
+steps: 10
+save_freq: 5
+env_eval_freq: 0
+push_to_hub: false
 train_seeds: [11]
 evaluation_seeds: [101, 102, 103, 104]
 counterfactual_seeds: [101, 102, 103, 104]
 num_workers: 0
-episodes_per_task: 4
+episodes_per_task: 2
 lora:
-  rank: 8
-  alpha: 16
+  rank: 4
+  alpha: 8
   target_modules: [q_proj, v_proj]

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts._gpu_job import _validate_training_checkpoint
+
 
 SCRIPTS = (
     "train_client_adapter.py",
@@ -43,6 +45,7 @@ def test_each_gpu_entrypoint_renders_without_importing_cuda(script, tmp_path):
     assert result["device"] == "cuda"
     assert result["hf_namespace"] == "phawitbinabik"
     assert "MUJOCO_GL=egl" in result["command"]
+    assert "causalvla" not in result["command"].lower()
     assert Path(result["run_dir"], "frozen_config.yaml").exists()
     assert Path(result["run_dir"], "run_manifest.json").exists()
 
@@ -81,3 +84,46 @@ def test_missing_required_arguments_are_rejected():
 
     assert completed.returncode == 2
     assert "--config" in completed.stderr
+
+
+def test_training_command_is_an_independent_bounded_smolvla_smoke(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/train_client_adapter.py",
+            "--config",
+            "configs/local/smolvla_smoke.yaml",
+            "--output-root",
+            str(tmp_path),
+            "--dry-run",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+    command = result["command"]
+    manifest = json.loads(Path(result["run_dir"], "run_manifest.json").read_text())
+
+    assert "python -m lerobot.scripts.lerobot_train" in command
+    assert "--policy.device=mps" in command
+    assert "--batch_size=2" in command
+    assert "--steps=10" in command
+    assert "--save_freq=5" in command
+    assert "--env_eval_freq=0" in command
+    assert "--policy.push_to_hub=false" in command
+    assert "causalvla" not in command.lower()
+    assert manifest["status"] == "initialized"
+    assert manifest["device"] == "mps"
+
+
+def test_training_completion_requires_loadable_checkpoint_files(tmp_path):
+    checkpoint = tmp_path / "checkpoints" / "000010" / "pretrained_model"
+    checkpoint.mkdir(parents=True)
+
+    with pytest.raises(RuntimeError, match="model.safetensors"):
+        _validate_training_checkpoint(tmp_path)
+
+    (checkpoint / "config.json").write_text("{}")
+    (checkpoint / "model.safetensors").write_bytes(b"weights")
+    assert _validate_training_checkpoint(tmp_path) == checkpoint
