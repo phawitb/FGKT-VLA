@@ -343,6 +343,8 @@ git commit -m "feat: gate consolidation and verify CPU smoke pipeline"
 
 ### Task 8: SmolVLA/LIBERO GPU job entry points
 
+Reuse the validated LeRobot 0.6.1, LIBERO environment, deterministic evaluation, resume, and logging conventions documented in `docs/causalvla_reuse.md` and `/Users/phawit/Projects/CausalVLA`. Do not create a parallel simulator or checkpoint format.
+
 **Files:**
 - Create: `scripts/train_client_adapter.py`
 - Create: `scripts/generate_failures.py`
@@ -473,4 +475,3 @@ Create OpenVLA-OFT subset and SO-101 configs only when Gates A-D pass. Otherwise
 git add reports docs/gate_review_template.md configs
 git commit -m "docs: record FCUT-VLA evidence gates and expansion decision"
 ```
-
