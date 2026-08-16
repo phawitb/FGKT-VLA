@@ -142,7 +142,9 @@ def run_stage(stage: str) -> None:
         seeds=",".join(str(seed) for seed in evaluation),
         run_dir=shlex.quote(str(run_dir)),
     )
-    command = f"MUJOCO_GL=egl {command_body}"
+    command = (
+        "PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1 MUJOCO_GL=egl " + command_body
+    )
     _write_immutable(run_dir / "frozen_config.yaml", config_bytes)
     _write_immutable(run_dir / "run_manifest.json", _canonical(manifest))
     _write_immutable(run_dir / "command.sh", (command + "\n").encode())

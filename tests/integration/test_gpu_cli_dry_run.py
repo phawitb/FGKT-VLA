@@ -45,6 +45,8 @@ def test_each_gpu_entrypoint_renders_without_importing_cuda(script, tmp_path):
     assert result["device"] == "cuda"
     assert result["hf_namespace"] == "phawitbinabik"
     assert "MUJOCO_GL=egl" in result["command"]
+    assert "PYTHONNOUSERSITE=1" in result["command"]
+    assert "PYTHONUNBUFFERED=1" in result["command"]
     assert "causalvla" not in result["command"].lower()
     assert Path(result["run_dir"], "frozen_config.yaml").exists()
     assert Path(result["run_dir"], "run_manifest.json").exists()
