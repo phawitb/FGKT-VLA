@@ -135,6 +135,34 @@ The runner refuses an existing output directory and accepts the checkpoint
 only after `verify_adapter_run.py` succeeds. It reports the official
 `eval_info.json` success result on a zero-to-one scale.
 
+After that evaluator smoke succeeds, record one authoritative sanitized Stage
+B episode. This uses the same official LeRobot environment, PEFT policy, and
+processors, but stores only fixed numeric image moments, the eight-value policy
+state, executed actions, action summaries, rewards, and terminal flags:
+
+```bash
+EPISODE=runs/libero-failure-smoke/spatial-task0-seed101/episode.json
+
+PYTHONNOUSERSITE=1 python scripts/record_libero_episode.py \
+  --adapter-run "$RUN" --output "$EPISODE" \
+  --suite libero_spatial --task-id 0 --seed 101 \
+  --episode-index 0 --initial-state-index 0 --dry-run
+
+MUJOCO_GL=egl PYOPENGL_PLATFORM=egl \
+PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1 \
+python scripts/record_libero_episode.py \
+  --adapter-run "$RUN" --output "$EPISODE" \
+  --suite libero_spatial --task-id 0 --seed 101 \
+  --episode-index 0 --initial-state-index 0
+```
+
+The command refuses an existing episode file, derives the canonical policy
+namespace and task alias internally, hashes the exact selected initial-state
+array, validates seven finite action values before every simulator step, and
+forces a failed terminal record at the frozen task horizon. `image_moments_v1`
+is a pipeline smoke extractor, not the learned visual representation intended
+for final paper experiments.
+
 ## 5. Stages B-D safety status
 
 The bounded single-adapter LIBERO evaluator above is executable. Full failure
