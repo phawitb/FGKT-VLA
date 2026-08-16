@@ -89,7 +89,13 @@ building both EGL probe packages without pip build isolation:
 
 ```bash
 python -m pip uninstall -y egl-probe hf-egl-probe robomimic hf-libero
-conda install -y -c conda-forge 'cmake>=3.29,<4'
+
+# TLJH may put a stale ~/.local/bin/cmake before the active conda environment.
+export PATH="$CONDA_PREFIX/bin:/usr/bin:/bin:$PATH"
+hash -r
+PYTHONNOUSERSITE=1 python -m pip install --force-reinstall 'cmake>=3.29,<4'
+test "$(command -v cmake)" = "$CONDA_PREFIX/bin/cmake"
+cmake --version
 
 CMAKE_POLICY_VERSION_MINIMUM=3.5 PYTHONNOUSERSITE=1 \
 python -m pip install --no-build-isolation --no-cache-dir \
