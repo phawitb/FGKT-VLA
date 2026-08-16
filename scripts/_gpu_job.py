@@ -12,6 +12,8 @@ import sys
 
 import yaml
 
+from fcut_vla.adapters.artifact import validate_adapter_run
+
 
 STAGE_COMMANDS = {
     "train_client_adapter": (
@@ -222,6 +224,15 @@ def run_stage(stage: str) -> None:
     if completed.returncode:
         raise SystemExit(completed.returncode)
     if stage == "train_client_adapter":
-        _validate_training_checkpoint(run_dir / "checkpoints" / "client-adapter")
+        artifact = validate_adapter_run(
+            run_dir / "checkpoints" / "client-adapter",
+            log_path=run_dir / "logs" / "stderr.log",
+            expected_rank=peft["rank"],
+            expected_alpha=peft["alpha"],
+            expected_step=int(config["steps"]),
+        )
+        _write_immutable(
+            run_dir / "adapter_metadata.json", (artifact.to_json() + "\n").encode()
+        )
     (run_dir / "COMPLETE").write_text(run_hash + "\n")
     print(json.dumps(result, sort_keys=True))
