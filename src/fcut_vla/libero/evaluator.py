@@ -11,6 +11,18 @@ import subprocess
 import sys
 from typing import Any
 
+from fcut_vla.libero.episode import EpisodeRecord, validate_episode_shard
+
+
+@dataclass(frozen=True)
+class FixtureEvaluator:
+    """Deterministic evaluator adapter for canonical committed episode fixtures."""
+
+    episode_shard: Path
+
+    def episode_records(self) -> tuple[EpisodeRecord, ...]:
+        return validate_episode_shard(self.episode_shard)
+
 
 def adapter_checkpoint_from_report(run_dir: Path, report: dict[str, Any]) -> Path:
     if report.get("valid") is not True:
