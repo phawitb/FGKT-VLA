@@ -1,0 +1,15 @@
+experiment_name: fcut-vla-development
+backbone: smolvla
+hf_namespace: phawitbinabik
+model_prefix: fcut-vla-dev
+dataset_repo_id: lerobot/libero_spatial_image
+benchmark_manifest: manifests/fedlibero_fail_v1.yaml
+train_seeds: [11]
+evaluation_seeds: [101, 102, 103, 104]
+counterfactual_seeds: [101, 102, 103, 104]
+num_workers: 0
+episodes_per_task: 4
+lora:
+  rank: 8
+  alpha: 16
+  target_modules: [q_proj, v_proj]
