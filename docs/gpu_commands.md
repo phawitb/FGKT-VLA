@@ -19,7 +19,7 @@ python -m pip install -e '.[dev]'
 
 # Install an independent official LeRobot checkout.
 git clone --branch v0.6.1 --depth 1 https://github.com/huggingface/lerobot.git .deps/lerobot
-PYTHONNOUSERSITE=1 python -m pip install -e './.deps/lerobot[smolvla,dataset,libero,peft]'
+PYTHONNOUSERSITE=1 python -m pip install -e './.deps/lerobot[smolvla,dataset,peft]'
 
 hf auth whoami
 nvidia-smi
@@ -81,20 +81,69 @@ Do not proceed unless verification prints `"valid":true`, the completed step is
 `adapter_config.json` plus `adapter_model.safetensors` rather than a full-model
 `model.safetensors`.
 
-## 4. Stages B-D safety status
+## 4. Install LIBERO and run one bounded rollout
 
-Failure generation, counterfactual-label construction, ranker training, repair
-evaluation, and continual orchestration currently support **dry-run only**.
-Their immutable CLI contracts are frozen, but their LeRobot rollout backends
-must be implemented and tested before removing the execution guard. This is
-intentional: the pipeline must not emit placeholder rollouts or fabricated
-paper metrics.
+Training does not require the `libero` extra. Install it only after adapter
+verification. On Ubuntu, LeRobot issue 3397 requires CMake below version 4 and
+building both EGL probe packages without pip build isolation:
+
+```bash
+python -m pip uninstall -y egl-probe hf-egl-probe robomimic hf-libero
+conda install -y -c conda-forge 'cmake>=3.29,<4'
+
+CMAKE_POLICY_VERSION_MINIMUM=3.5 PYTHONNOUSERSITE=1 \
+python -m pip install --no-build-isolation --no-cache-dir \
+  --no-binary egl_probe,hf_egl_probe \
+  egl-probe==1.0.2 hf-egl-probe==1.0.2
+
+CMAKE_POLICY_VERSION_MINIMUM=3.5 PYTHONNOUSERSITE=1 \
+python -m pip install -e './.deps/lerobot[libero]'
+
+python -m pip check
+MUJOCO_GL=egl PYOPENGL_PLATFORM=egl PYTHONNOUSERSITE=1 python - <<'PY'
+import egl_probe
+import libero
+import mujoco
+print("LIBERO/EGL imports: OK")
+PY
+```
+
+Render and inspect the exact official LeRobot command first. The default is
+deliberately bounded to LIBERO-Spatial task 0, seed 101, and one episode:
+
+```bash
+RUN=runs/lora-smoke-final/fgkt-vla-gpu-smoke/train_client_adapter/e05aed2369daaf8e
+
+PYTHONNOUSERSITE=1 python scripts/evaluate_libero_smoke.py \
+  --adapter-run "$RUN" \
+  --output-dir runs/libero-eval-smoke/spatial-task0-seed101 \
+  --suite libero_spatial --task-id 0 --seed 101 --episodes 1 --dry-run
+
+PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1 python scripts/evaluate_libero_smoke.py \
+  --adapter-run "$RUN" \
+  --output-dir runs/libero-eval-smoke/spatial-task0-seed101 \
+  --suite libero_spatial --task-id 0 --seed 101 --episodes 1
+```
+
+The runner refuses an existing output directory and accepts the checkpoint
+only after `verify_adapter_run.py` succeeds. It reports the official
+`eval_info.json` success result on a zero-to-one scale.
+
+## 5. Stages B-D safety status
+
+The bounded single-adapter LIBERO evaluator above is executable. Full failure
+generation, paired counterfactual collection, ranker training, repair
+evaluation, and continual orchestration still support **dry-run only**. Their
+immutable CLI contracts and privacy-safe paired-label primitives are frozen,
+but the full rollout recorder backend must be implemented and tested before
+removing those execution guards. This is intentional: the pipeline must not
+emit placeholder rollouts or fabricated paper metrics.
 
 The development configuration is for integration checks. Do not launch
 `configs/gpu/main.yaml` until development runs produce paired artifacts and
 pass retention-gate verification.
 
-## 5. Resume and failure recovery
+## 6. Resume and failure recovery
 
 ```bash
 # Resume an incomplete stage without changing its frozen identity.
