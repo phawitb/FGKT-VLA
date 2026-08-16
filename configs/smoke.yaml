@@ -1,0 +1,13 @@
+experiment_name: smoke
+backbone: smolvla
+lora:
+  rank: 4
+  alpha: 8
+  target_modules: [q_proj, v_proj]
+ranker_features: [failure_context, skill_prototype, update_sketch]
+train_seeds: [11]
+evaluation_seeds: [101, 102]
+counterfactual_seeds: [101, 102]
+personalized_repair_first: true
+retention_gate: true
+

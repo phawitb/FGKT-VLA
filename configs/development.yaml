@@ -1,0 +1,12 @@
+experiment_name: fedlibero-development
+backbone: smolvla
+lora:
+  rank: 16
+  alpha: 32
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
+ranker_features: [failure_context, target_context, skill_prototype, update_sketch, reliability, compatibility]
+train_seeds: [11, 22, 33]
+evaluation_seeds: [101, 102, 103, 104, 105]
+counterfactual_seeds: [101, 102, 103, 104, 105]
+personalized_repair_first: true
+retention_gate: true
