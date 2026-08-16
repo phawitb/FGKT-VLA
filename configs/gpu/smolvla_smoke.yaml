@@ -1,7 +1,12 @@
 experiment_name: fgkt-vla-gpu-smoke
 backbone: smolvla
+base_policy: lerobot/smolvla_base
+base_policy_revision: c83c3163b8ca9b7e67c509fffd9121e66cb96205
+dataset_revision: d86c0b94922572b3b657e1d1a3d01f0952ddeb46
+lerobot_commit: 7e241bd630a3719a56157a497ce5d08f244784f1
+peft_version: 0.20.0
 hf_namespace: phawitbinabik
-model_prefix: fgkt-vla-gpu-smoke
+model_prefix: fgkt-vla-smoke
 dataset_repo_id: lerobot/libero_spatial_image
 benchmark_manifest: manifests/fedlibero_fail_v1.yaml
 device: cuda

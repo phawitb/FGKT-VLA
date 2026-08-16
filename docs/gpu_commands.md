@@ -19,7 +19,7 @@ python -m pip install -e '.[dev]'
 
 # Install an independent official LeRobot checkout.
 git clone --branch v0.6.1 --depth 1 https://github.com/huggingface/lerobot.git .deps/lerobot
-python -m pip install -e './.deps/lerobot[smolvla,dataset,libero]'
+PYTHONNOUSERSITE=1 python -m pip install -e './.deps/lerobot[smolvla,dataset,libero,peft]'
 
 hf auth whoami
 nvidia-smi
@@ -52,14 +52,34 @@ never overwritten.
 Inspect `command.sh` from the dry run, then launch through the entry point:
 
 ```bash
-python scripts/train_client_adapter.py \
+PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1 python scripts/train_client_adapter.py \
   --config configs/gpu/smolvla_smoke.yaml \
-  --output-root runs
+  --output-root runs/lora-smoke
 ```
 
 This runs the same bounded 10-step training contract that passed on the Mac,
-changing only `mps` to `cuda`. It does not upload to the Hub. Verify the step-10
-checkpoint before running `configs/gpu/development.yaml`.
+changing only `mps` to `cuda`. The rendered command loads
+`lerobot/smolvla_base`, derives input/output features from the LIBERO dataset,
+and trains native LeRobot LoRA rank 8 / alpha 16. Both Hub inputs are pinned to
+immutable revisions, and runtime provenance is checked against LeRobot commit
+`7e241bd6` plus PEFT `0.20.0`. FGKT-VLA resolves the base revision to a local
+immutable Hub snapshot before LeRobot reads its config or weights, and rejects
+a dirty `.deps/lerobot` checkout. It does not upload to the Hub.
+
+Monitor and verify the final adapter:
+
+```bash
+LOG=$(find runs/lora-smoke/fgkt-vla-gpu-smoke -name stderr.log | head -1)
+tail -f "$LOG"
+
+RUN=$(find runs/lora-smoke/fgkt-vla-gpu-smoke -name COMPLETE -exec dirname {} \; | head -1)
+PYTHONNOUSERSITE=1 python scripts/verify_adapter_run.py --run-dir "$RUN"
+```
+
+Do not proceed unless verification prints `"valid":true`, the completed step is
+10, the trainable ratio is below 0.10, and the checkpoint contains
+`adapter_config.json` plus `adapter_model.safetensors` rather than a full-model
+`model.safetensors`.
 
 ## 4. Stages B-D safety status
 

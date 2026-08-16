@@ -130,7 +130,7 @@ def _parameter_counts(log_path: Path) -> tuple[int, int]:
     return int(trainable_matches[-1]), int(total_matches[-1])
 
 
-def _resolved_lora_targets(weights_path: Path) -> tuple[str, ...]:
+def resolved_lora_targets(weights_path: Path) -> tuple[str, ...]:
     targets: set[str] = set()
     try:
         with safe_open(weights_path, framework="pt", device="cpu") as weights:
@@ -163,7 +163,7 @@ def validate_adapter_run(
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         raise AdapterArtifactError("training_step.json is malformed") from error
     trainable, total = _parameter_counts(log_path)
-    targets = _resolved_lora_targets(checkpoint / "adapter_model.safetensors")
+    targets = resolved_lora_targets(checkpoint / "adapter_model.safetensors")
     return validate_adapter_checkpoint(
         checkpoint,
         expected_rank=expected_rank,

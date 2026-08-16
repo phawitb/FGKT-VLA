@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from hashlib import sha256
+from importlib.metadata import version
 import json
 from pathlib import Path
 import shlex
@@ -11,14 +12,18 @@ import subprocess
 import sys
 
 import yaml
+from huggingface_hub import snapshot_download
 
 from fcut_vla.adapters.artifact import validate_adapter_run
 
 
 STAGE_COMMANDS = {
     "train_client_adapter": (
-        "python -m lerobot.scripts.lerobot_train --policy.type=smolvla "
-        "--dataset.repo_id={dataset} --job_name={job_name} --policy.device={device} "
+        "python -m lerobot.scripts.lerobot_train --policy.path={base_policy} "
+        "--policy.pretrained_revision={base_policy_revision} "
+        "--policy.input_features=null --policy.output_features=null "
+        "--dataset.repo_id={dataset} --dataset.revision={dataset_revision} "
+        "--job_name={job_name} --policy.device={device} "
         "--batch_size={batch_size} --steps={steps} --seed={train_seed} "
         "--save_freq={save_freq} --env_eval_freq={env_eval_freq} "
         "{peft_arguments} "
@@ -58,11 +63,78 @@ def _git_commit() -> str:
     ).stdout.strip()
 
 
+def _runtime_provenance(config: dict) -> dict[str, str]:
+    repo_root = Path(__file__).resolve().parents[1]
+    lerobot_commit = subprocess.run(
+        ["git", "-C", str(repo_root / ".deps" / "lerobot"), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "-C", str(repo_root / ".deps" / "lerobot"), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if dirty:
+        raise RuntimeError("LeRobot checkout is dirty; refuse untracked runtime provenance")
+    peft_version = version("peft")
+    expected = {
+        "lerobot_commit": str(config["lerobot_commit"]),
+        "peft_version": str(config["peft_version"]),
+    }
+    actual = {"lerobot_commit": lerobot_commit, "peft_version": peft_version}
+    if actual != expected:
+        raise RuntimeError(f"runtime provenance mismatch: expected {expected}, got {actual}")
+    return actual
+
+
+def _resolve_base_policy(config: dict) -> Path:
+    return Path(
+        snapshot_download(
+            repo_id=str(config["base_policy"]),
+            revision=str(config["base_policy_revision"]),
+        )
+    )
+
+
+def _normalize_adapter_provenance(output_dir: Path, base_policy: str, revision: str) -> None:
+    checkpoints = sorted(
+        (path for path in (Path(output_dir) / "checkpoints").iterdir() if path.name.isdigit()),
+        key=lambda path: int(path.name),
+    )
+    if not checkpoints:
+        raise RuntimeError("cannot normalize adapter provenance without a checkpoint")
+    config_path = checkpoints[-1] / "pretrained_model" / "adapter_config.json"
+    config = json.loads(config_path.read_text())
+    config["base_model_name_or_path"] = base_policy
+    config["revision"] = revision
+    config_path.write_bytes(_canonical(config))
+
+
 def _write_immutable(path: Path, content: bytes) -> None:
     if path.exists() and path.read_bytes() != content:
         raise RuntimeError(f"refusing to overwrite immutable artifact: {path}")
     if not path.exists():
         path.write_bytes(content)
+
+
+def _completion_record(
+    run_hash: str,
+    metadata_bytes: bytes,
+    adapter_sha256: str,
+    adapter_config_sha256: str,
+) -> bytes:
+    payload = {
+        "schema_version": 1,
+        "run_hash": run_hash,
+        "adapter_metadata_sha256": sha256(metadata_bytes).hexdigest(),
+        "adapter_sha256": adapter_sha256,
+        "adapter_config_sha256": adapter_config_sha256,
+    }
+    record = {**payload, "completion_sha256": sha256(_canonical(payload)).hexdigest()}
+    return _canonical(record) + b"\n"
 
 
 def _normalized_peft(config: dict) -> dict:
@@ -133,16 +205,26 @@ def run_stage(stage: str) -> None:
     config_bytes = args.config.read_bytes()
     config = yaml.safe_load(config_bytes)
     peft = _normalized_peft(config)
+    runtime = _runtime_provenance(config)
+    base_policy_snapshot = _resolve_base_policy(config)
     evaluation = [int(seed) for seed in config["evaluation_seeds"]]
     counterfactual = [int(seed) for seed in config["counterfactual_seeds"]]
     if evaluation != counterfactual:
         raise ValueError("evaluation and counterfactual seeds must be exactly paired")
 
+    manifest_path = Path(config["benchmark_manifest"])
+    manifest_hash = sha256(manifest_path.read_bytes()).hexdigest()
     identity = {
         "schema_version": 1,
         "stage": stage,
         "config_sha256": sha256(config_bytes).hexdigest(),
         "benchmark_manifest": config["benchmark_manifest"],
+        "manifest_hash": manifest_hash,
+        "base_policy": config["base_policy"],
+        "base_policy_revision": config["base_policy_revision"],
+        "dataset_repo_id": config["dataset_repo_id"],
+        "dataset_revision": config["dataset_revision"],
+        "runtime": runtime,
         "evaluation_seeds": evaluation,
         "counterfactual_seeds": counterfactual,
         "peft": peft,
@@ -156,12 +238,9 @@ def run_stage(stage: str) -> None:
         raise RuntimeError(f"refusing to overwrite completed run: {run_dir}")
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest_path = Path(config["benchmark_manifest"])
-    manifest_hash = sha256(manifest_path.read_bytes()).hexdigest()
     manifest = {
         **identity,
         "run_hash": run_hash,
-        "manifest_hash": manifest_hash,
         "git_commit": _git_commit(),
         "hf_namespace": config["hf_namespace"],
         "device": config["device"],
@@ -170,7 +249,10 @@ def run_stage(stage: str) -> None:
     }
     command_body = STAGE_COMMANDS[stage].format(
         dataset=shlex.quote(config["dataset_repo_id"]),
+        dataset_revision=shlex.quote(config["dataset_revision"]),
         hf_namespace=shlex.quote(config["hf_namespace"]),
+        base_policy=shlex.quote(str(base_policy_snapshot)),
+        base_policy_revision=shlex.quote(config["base_policy_revision"]),
         model_prefix=shlex.quote(config["model_prefix"]),
         job_name=shlex.quote(f"{config['model_prefix']}-{stage}"),
         device=shlex.quote(config["device"]),
@@ -224,6 +306,11 @@ def run_stage(stage: str) -> None:
     if completed.returncode:
         raise SystemExit(completed.returncode)
     if stage == "train_client_adapter":
+        _normalize_adapter_provenance(
+            run_dir / "checkpoints" / "client-adapter",
+            str(config["base_policy"]),
+            str(config["base_policy_revision"]),
+        )
         artifact = validate_adapter_run(
             run_dir / "checkpoints" / "client-adapter",
             log_path=run_dir / "logs" / "stderr.log",
@@ -231,8 +318,25 @@ def run_stage(stage: str) -> None:
             expected_alpha=peft["alpha"],
             expected_step=int(config["steps"]),
         )
+        metadata_bytes = (artifact.to_json() + "\n").encode()
+        _write_immutable(run_dir / "adapter_metadata.json", metadata_bytes)
         _write_immutable(
-            run_dir / "adapter_metadata.json", (artifact.to_json() + "\n").encode()
+            run_dir / "COMPLETE",
+            _completion_record(
+                run_hash,
+                metadata_bytes,
+                artifact.adapter_sha256,
+                sha256(
+                    (
+                        run_dir
+                        / "checkpoints"
+                        / "client-adapter"
+                        / "checkpoints"
+                        / f"{int(config['steps']):06d}"
+                        / "pretrained_model"
+                        / "adapter_config.json"
+                    ).read_bytes()
+                ).hexdigest(),
+            ),
         )
-    (run_dir / "COMPLETE").write_text(run_hash + "\n")
     print(json.dumps(result, sort_keys=True))

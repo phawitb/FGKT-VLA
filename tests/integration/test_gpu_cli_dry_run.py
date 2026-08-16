@@ -1,11 +1,18 @@
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from scripts._gpu_job import _validate_training_checkpoint, render_peft_arguments
+from scripts._gpu_job import (
+    _resolve_base_policy,
+    _runtime_provenance,
+    _validate_training_checkpoint,
+    render_peft_arguments,
+)
 
 
 SCRIPTS = (
@@ -108,6 +115,17 @@ def test_training_command_is_an_independent_bounded_smolvla_smoke(tmp_path):
     manifest = json.loads(Path(result["run_dir"], "run_manifest.json").read_text())
 
     assert "python -m lerobot.scripts.lerobot_train" in command
+    policy_path_arg = next(
+        argument for argument in shlex.split(command) if argument.startswith("--policy.path=")
+    )
+    policy_snapshot = Path(policy_path_arg.split("=", 1)[1])
+    assert policy_snapshot.is_dir()
+    assert policy_snapshot.name == "c83c3163b8ca9b7e67c509fffd9121e66cb96205"
+    assert "--policy.pretrained_revision=c83c3163b8ca9b7e67c509fffd9121e66cb96205" in command
+    assert "--dataset.revision=d86c0b94922572b3b657e1d1a3d01f0952ddeb46" in command
+    assert "--policy.type=smolvla" not in command
+    assert "--policy.input_features=null" in command
+    assert "--policy.output_features=null" in command
     assert "--policy.device=mps" in command
     assert "--batch_size=2" in command
     assert "--steps=10" in command
@@ -122,6 +140,13 @@ def test_training_command_is_an_independent_bounded_smolvla_smoke(tmp_path):
     assert "causalvla" not in command.lower()
     assert manifest["status"] == "initialized"
     assert manifest["device"] == "mps"
+    assert manifest["base_policy"] == "lerobot/smolvla_base"
+    assert manifest["base_policy_revision"] == "c83c3163b8ca9b7e67c509fffd9121e66cb96205"
+    assert manifest["dataset_revision"] == "d86c0b94922572b3b657e1d1a3d01f0952ddeb46"
+    assert manifest["runtime"] == {
+        "lerobot_commit": "7e241bd630a3719a56157a497ce5d08f244784f1",
+        "peft_version": "0.20.0",
+    }
     assert manifest["peft"] == {
         "alpha": 16,
         "method_type": "LORA",
@@ -153,3 +178,41 @@ def test_training_completion_requires_loadable_checkpoint_files(tmp_path):
     (checkpoint / "config.json").write_text("{}")
     (checkpoint / "model.safetensors").write_bytes(b"weights")
     assert _validate_training_checkpoint(tmp_path) == checkpoint
+
+
+def test_base_policy_snapshot_resolution_uses_frozen_revision(monkeypatch, tmp_path):
+    observed = {}
+
+    def fake_snapshot_download(**kwargs):
+        observed.update(kwargs)
+        return str(tmp_path / "snapshot")
+
+    monkeypatch.setattr("scripts._gpu_job.snapshot_download", fake_snapshot_download)
+    resolved = _resolve_base_policy(
+        {
+            "base_policy": "lerobot/smolvla_base",
+            "base_policy_revision": "base-commit-sha",
+        }
+    )
+
+    assert resolved == tmp_path / "snapshot"
+    assert observed == {
+        "repo_id": "lerobot/smolvla_base",
+        "revision": "base-commit-sha",
+    }
+
+
+def test_runtime_provenance_rejects_dirty_lerobot_checkout(monkeypatch):
+    responses = iter(
+        [
+            SimpleNamespace(stdout="lerobot-sha\n"),
+            SimpleNamespace(stdout=" M src/lerobot/policies/factory.py\n"),
+        ]
+    )
+    monkeypatch.setattr("scripts._gpu_job.subprocess.run", lambda *args, **kwargs: next(responses))
+    monkeypatch.setattr("scripts._gpu_job.version", lambda package: "0.20.0")
+
+    with pytest.raises(RuntimeError, match="dirty"):
+        _runtime_provenance(
+            {"lerobot_commit": "lerobot-sha", "peft_version": "0.20.0"}
+        )
