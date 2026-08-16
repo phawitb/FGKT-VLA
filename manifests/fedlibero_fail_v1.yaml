@@ -1,0 +1,118 @@
+version: "1.0"
+ranker_features:
+  - failure_context
+  - target_context
+  - skill_prototype
+  - update_sketch
+  - reliability
+  - compatibility
+failure_strata: [seen_task, compositional, no_match]
+initial_state_seeds:
+  train: [1001, 1002, 1003, 1004, 1005]
+  validation: [2001, 2002, 2003, 2004, 2005]
+  test: [3001, 3002, 3003, 3004, 3005]
+
+tasks:
+  t01_red_mug_plate:
+    suite: libero_goal
+    instruction: put the red mug on the plate
+    skills: [grasp_mug, transport_short, place_on_plate]
+  t02_black_bowl_drawer:
+    suite: libero_goal
+    instruction: put the black bowl in the top drawer
+    skills: [grasp_bowl, transport_short, place_in_drawer]
+  t03_open_top_drawer:
+    suite: libero_spatial
+    instruction: open the top drawer
+    skills: [reach_handle, pull_articulation]
+  t04_yellow_block_basket:
+    suite: libero_goal
+    instruction: put the yellow block in the basket
+    skills: [grasp_block, transport_medium, place_in_basket]
+  t05_moka_stove:
+    suite: libero_long
+    instruction: put the moka pot on the stove and turn the stove on
+    skills: [grasp_handle, place_on_stove, turn_knob]
+  t06_white_mug_left:
+    suite: libero_spatial
+    instruction: place the white mug to the left of the plate
+    skills: [grasp_mug, transport_medium, place_left_of]
+  t07_close_bottom_drawer:
+    suite: libero_spatial
+    instruction: close the bottom drawer
+    skills: [reach_drawer_front, push_articulation]
+  t08_blue_block_tray:
+    suite: libero_goal
+    instruction: put the blue block in the wooden tray
+    skills: [grasp_block, transport_short, place_in_tray]
+  t09_kettle_cabinet:
+    suite: libero_long
+    instruction: put the kettle in the cabinet and close the cabinet
+    skills: [grasp_kettle, place_in_cabinet, close_door]
+  t10_bowl_right_plate:
+    suite: libero_spatial
+    instruction: place the bowl to the right of the plate
+    skills: [grasp_bowl, transport_medium, place_right_of]
+  t11_open_cabinet:
+    suite: libero_spatial
+    instruction: open the cabinet door
+    skills: [reach_cabinet_handle, rotate_articulation]
+  t12_red_block_drawer:
+    suite: libero_goal
+    instruction: put the red block in the open drawer
+    skills: [grasp_block, transport_long, place_in_open_drawer]
+  t13_mug_stove_side:
+    suite: libero_spatial
+    instruction: place the mug beside the stove
+    skills: [grasp_mug, avoid_obstacle, place_beside]
+  t14_plate_cabinet:
+    suite: libero_goal
+    instruction: put the plate in the cabinet
+    skills: [grasp_plate, orient_vertical, place_in_cabinet]
+  t15_basket_drawer_sequence:
+    suite: libero_long
+    instruction: put the block in the basket and close the drawer
+    skills: [grasp_block, place_in_basket, push_articulation]
+  t16_moka_left_plate:
+    suite: libero_spatial
+    instruction: place the moka pot to the left of the plate
+    skills: [grasp_handle, transport_long, place_left_of]
+  t17_mug_drawer_close:
+    suite: libero_long
+    instruction: put the mug in the drawer and close it
+    skills: [grasp_mug, place_in_drawer, push_articulation]
+  t18_bowl_stove_right:
+    suite: libero_spatial
+    instruction: place the bowl to the right of the stove
+    skills: [grasp_bowl, avoid_obstacle, place_right_of]
+  t19_block_cabinet_close:
+    suite: libero_long
+    instruction: put the block in the cabinet and close the door
+    skills: [grasp_block, place_in_cabinet, close_door]
+  t20_kettle_tray:
+    suite: libero_goal
+    instruction: place the kettle in the wooden tray
+    skills: [grasp_kettle, transport_long, place_in_tray]
+
+assignments:
+  - {client: c1, stage: 1, task: t01_red_mug_plate, split: train, assignment_key: c1-s1-t01}
+  - {client: c1, stage: 2, task: t06_white_mug_left, split: train, assignment_key: c1-s2-t06}
+  - {client: c1, stage: 3, task: t11_open_cabinet, split: validation, assignment_key: c1-s3-t11}
+  - {client: c1, stage: 4, task: t16_moka_left_plate, split: test, assignment_key: c1-s4-t16}
+  - {client: c2, stage: 1, task: t02_black_bowl_drawer, split: train, assignment_key: c2-s1-t02}
+  - {client: c2, stage: 2, task: t07_close_bottom_drawer, split: train, assignment_key: c2-s2-t07}
+  - {client: c2, stage: 3, task: t12_red_block_drawer, split: validation, assignment_key: c2-s3-t12}
+  - {client: c2, stage: 4, task: t17_mug_drawer_close, split: test, assignment_key: c2-s4-t17}
+  - {client: c3, stage: 1, task: t03_open_top_drawer, split: train, assignment_key: c3-s1-t03}
+  - {client: c3, stage: 2, task: t08_blue_block_tray, split: train, assignment_key: c3-s2-t08}
+  - {client: c3, stage: 3, task: t13_mug_stove_side, split: validation, assignment_key: c3-s3-t13}
+  - {client: c3, stage: 4, task: t18_bowl_stove_right, split: test, assignment_key: c3-s4-t18}
+  - {client: c4, stage: 1, task: t04_yellow_block_basket, split: train, assignment_key: c4-s1-t04}
+  - {client: c4, stage: 2, task: t09_kettle_cabinet, split: train, assignment_key: c4-s2-t09}
+  - {client: c4, stage: 3, task: t14_plate_cabinet, split: validation, assignment_key: c4-s3-t14}
+  - {client: c4, stage: 4, task: t19_block_cabinet_close, split: test, assignment_key: c4-s4-t19}
+  - {client: c5, stage: 1, task: t05_moka_stove, split: train, assignment_key: c5-s1-t05}
+  - {client: c5, stage: 2, task: t10_bowl_right_plate, split: train, assignment_key: c5-s2-t10}
+  - {client: c5, stage: 3, task: t15_basket_drawer_sequence, split: validation, assignment_key: c5-s3-t15}
+  - {client: c5, stage: 4, task: t20_kettle_tray, split: test, assignment_key: c5-s4-t20}
+
