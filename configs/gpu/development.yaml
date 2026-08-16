@@ -18,4 +18,4 @@ episodes_per_task: 4
 lora:
   rank: 8
   alpha: 16
-  target_modules: [q_proj, v_proj]
+  target_modules: native_default

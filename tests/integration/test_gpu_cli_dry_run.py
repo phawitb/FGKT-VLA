@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts._gpu_job import _validate_training_checkpoint
+from scripts._gpu_job import _validate_training_checkpoint, render_peft_arguments
 
 
 SCRIPTS = (
@@ -114,9 +114,33 @@ def test_training_command_is_an_independent_bounded_smolvla_smoke(tmp_path):
     assert "--save_freq=5" in command
     assert "--env_eval_freq=0" in command
     assert "--policy.push_to_hub=false" in command
+    assert "--peft.method_type=LORA" in command
+    assert "--peft.r=8" in command
+    assert "--peft.lora_alpha=16" in command
+    assert "--peft.full_training_modules=[]" in command
+    assert "--peft.target_modules" not in command
     assert "causalvla" not in command.lower()
     assert manifest["status"] == "initialized"
     assert manifest["device"] == "mps"
+    assert manifest["peft"] == {
+        "alpha": 16,
+        "method_type": "LORA",
+        "rank": 8,
+        "target_modules": "native_default",
+    }
+
+
+@pytest.mark.parametrize(
+    "lora, message",
+    [
+        ({"rank": 0, "alpha": 16, "target_modules": "native_default"}, "rank"),
+        ({"rank": 8, "alpha": 0, "target_modules": "native_default"}, "alpha"),
+        ({"rank": 8, "alpha": 16, "target_modules": []}, "target_modules"),
+    ],
+)
+def test_invalid_lora_configuration_is_rejected(lora, message):
+    with pytest.raises(ValueError, match=message):
+        render_peft_arguments({"lora": lora})
 
 
 def test_training_completion_requires_loadable_checkpoint_files(tmp_path):

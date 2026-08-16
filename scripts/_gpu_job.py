@@ -19,6 +19,7 @@ STAGE_COMMANDS = {
         "--dataset.repo_id={dataset} --job_name={job_name} --policy.device={device} "
         "--batch_size={batch_size} --steps={steps} --seed={train_seed} "
         "--save_freq={save_freq} --env_eval_freq={env_eval_freq} "
+        "{peft_arguments} "
         "--policy.push_to_hub={push_to_hub} {hub_repo_argument} "
         "--output_dir={run_dir}/checkpoints/client-adapter"
     ),
@@ -62,6 +63,47 @@ def _write_immutable(path: Path, content: bytes) -> None:
         path.write_bytes(content)
 
 
+def _normalized_peft(config: dict) -> dict:
+    lora = config.get("lora")
+    if not isinstance(lora, dict):
+        raise ValueError("lora configuration must be a mapping")
+    rank = int(lora.get("rank", 0))
+    alpha = int(lora.get("alpha", 0))
+    if rank < 1:
+        raise ValueError("lora rank must be positive")
+    if alpha < 1:
+        raise ValueError("lora alpha must be positive")
+    targets = lora.get("target_modules")
+    if targets == "native_default":
+        normalized_targets: str | list[str] = "native_default"
+    elif isinstance(targets, list) and targets:
+        normalized_targets = sorted({str(item).strip() for item in targets if str(item).strip()})
+        if not normalized_targets:
+            raise ValueError("lora target_modules must be non-empty")
+    else:
+        raise ValueError("lora target_modules must be native_default or a non-empty list")
+    return {
+        "method_type": "LORA",
+        "rank": rank,
+        "alpha": alpha,
+        "target_modules": normalized_targets,
+    }
+
+
+def render_peft_arguments(config: dict) -> tuple[str, ...]:
+    peft = _normalized_peft(config)
+    arguments = [
+        "--peft.method_type=LORA",
+        f"--peft.r={peft['rank']}",
+        f"--peft.lora_alpha={peft['alpha']}",
+        "--peft.full_training_modules=[]",
+    ]
+    if peft["target_modules"] != "native_default":
+        encoded_targets = json.dumps(peft["target_modules"], separators=(",", ":"))
+        arguments.append("--peft.target_modules=" + shlex.quote(encoded_targets))
+    return tuple(arguments)
+
+
 def _validate_training_checkpoint(output_dir: Path) -> Path:
     candidates = sorted(Path(output_dir).glob("checkpoints/*/pretrained_model"))
     if not candidates:
@@ -88,6 +130,7 @@ def run_stage(stage: str) -> None:
 
     config_bytes = args.config.read_bytes()
     config = yaml.safe_load(config_bytes)
+    peft = _normalized_peft(config)
     evaluation = [int(seed) for seed in config["evaluation_seeds"]]
     counterfactual = [int(seed) for seed in config["counterfactual_seeds"]]
     if evaluation != counterfactual:
@@ -100,6 +143,7 @@ def run_stage(stage: str) -> None:
         "benchmark_manifest": config["benchmark_manifest"],
         "evaluation_seeds": evaluation,
         "counterfactual_seeds": counterfactual,
+        "peft": peft,
     }
     run_hash = sha256(_canonical(identity)).hexdigest()[:16]
     run_dir = args.output_root / config["experiment_name"] / stage / run_hash
@@ -119,6 +163,7 @@ def run_stage(stage: str) -> None:
         "git_commit": _git_commit(),
         "hf_namespace": config["hf_namespace"],
         "device": config["device"],
+        "peft": peft,
         "status": "initialized",
     }
     command_body = STAGE_COMMANDS[stage].format(
@@ -132,6 +177,7 @@ def run_stage(stage: str) -> None:
         train_seed=int(config["train_seeds"][0]),
         save_freq=int(config["save_freq"]),
         env_eval_freq=int(config["env_eval_freq"]),
+        peft_arguments=" ".join(render_peft_arguments(config)),
         push_to_hub=str(bool(config["push_to_hub"])).lower(),
         hub_repo_argument=(
             "--policy.repo_id="
