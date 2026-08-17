@@ -63,3 +63,12 @@ def test_failure_shard_refuses_existing_directory_without_resume(tmp_path):
             output_dir=output,
             window_size=2,
         )
+
+
+def test_failure_shard_rejects_duplicate_episode_keys(tmp_path):
+    record = EpisodeRecord.from_mapping(episode_mapping())
+
+    with pytest.raises(ValueError, match="duplicate episode"):
+        write_failure_shard(
+            (record, record), output_dir=tmp_path / "failures", window_size=2
+        )

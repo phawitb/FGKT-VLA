@@ -163,6 +163,21 @@ forces a failed terminal record at the frozen task horizon. `image_moments_v1`
 is a pipeline smoke extractor, not the learned visual representation intended
 for final paper experiments.
 
+Finalize the recorded episode into an immutable Stage B failure shard without
+using the GPU again:
+
+```bash
+PYTHONNOUSERSITE=1 python scripts/build_failure_shard.py \
+  --episode "$EPISODE" \
+  --output-dir runs/libero-failure-smoke/spatial-task0-seed101/failure-shard \
+  --window-size 16
+```
+
+The 16-step smoke window covers 0.8 seconds at LIBERO's fixed 20 Hz. The
+command writes `failures.jsonl`, `failures.sha256`, and `SHARD.json`. Re-running
+requires `--resume`, which revalidates the exact episode content, window size,
+and artifact bytes rather than overwriting them.
+
 ## 5. Stages B-D safety status
 
 The bounded single-adapter LIBERO evaluator above is executable. Full failure

@@ -71,6 +71,8 @@ def write_failure_shard(
     records = tuple(sorted(records, key=lambda record: record.key))
     if not records:
         raise ValueError("failure shard requires at least one episode")
+    if len({record.key for record in records}) != len(records):
+        raise ValueError("failure shard contains duplicate episode keys")
     if window_size < 1:
         raise ValueError("failure window size must be positive")
 
