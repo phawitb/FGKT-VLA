@@ -105,8 +105,10 @@ python -m pip install --no-build-isolation --no-cache-dir \
 CMAKE_POLICY_VERSION_MINIMUM=3.5 PYTHONNOUSERSITE=1 \
 python -m pip install -e './.deps/lerobot[libero]'
 
-# The environment identity and runtime guard require this exact release.
-PYTHONNOUSERSITE=1 python -m pip install --force-reinstall 'hf-libero==0.1.4'
+# Pin only the runtime package. `--no-deps` avoids rebuilding the already
+# verified EGL probes when pip resolves the LIBERO dependency tree.
+PYTHONNOUSERSITE=1 python -m pip install --no-deps --force-reinstall \
+  'hf-libero==0.1.4'
 
 python -m pip check
 MUJOCO_GL=egl PYOPENGL_PLATFORM=egl PYTHONNOUSERSITE=1 python - <<'PY'
