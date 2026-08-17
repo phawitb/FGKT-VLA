@@ -9,14 +9,12 @@ from pathlib import Path
 
 from fcut_vla.libero.evaluator import adapter_checkpoint_from_report
 from fcut_vla.libero.runtime import (
+    CANONICAL_ADAPTER_REPO,
     LeRobotRecordPlan,
     OfficialLeRobotBindings,
     record_lerobot_episode,
 )
 from scripts.verify_adapter_run import verify_run
-
-
-POLICY_REPO = "phawitbinabik/fgkt-vla-adapters"
 
 
 def _plan_mapping(plan: LeRobotRecordPlan) -> dict[str, object]:
@@ -50,7 +48,7 @@ def main() -> None:
     checkpoint = adapter_checkpoint_from_report(args.adapter_run, report)
     plan = LeRobotRecordPlan(
         checkpoint=checkpoint,
-        policy_repo=POLICY_REPO,
+        policy_repo=CANONICAL_ADAPTER_REPO,
         policy_revision=str(report["adapter_sha256"]),
         suite=args.suite,
         task_id=args.task_id,

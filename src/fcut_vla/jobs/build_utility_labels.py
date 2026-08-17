@@ -13,6 +13,7 @@ from fcut_vla.utility.counterfactual import (
     compute_utility,
 )
 from fcut_vla.utility.privacy import assert_ranker_payload_safe
+from fcut_vla.libero.pairing import PairKey, PairPlan, PairingError, validate_pair_plan
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class PairResult:
     communication_bytes: int
     latency_seconds: float
     pair_plan_hash: str
+    pair_key: PairKey
     complete: bool
     seen_task: bool
 
@@ -59,6 +61,7 @@ class UtilityLabel:
 def build_utility_labels(
     pair_results: Iterable[PairResult],
     *,
+    pair_plans: Mapping[str, PairPlan],
     cost_normalization: CostNormalization,
     lambda_retention: float = 1.0,
     lambda_cost: float = 0.0,
@@ -66,6 +69,24 @@ def build_utility_labels(
     labels: list[UtilityLabel] = []
     seen_keys: set[tuple[str, str]] = set()
     for result in pair_results:
+        plan = pair_plans.get(result.pair_plan_hash)
+        if plan is None:
+            raise ValueError("referenced pair plan is missing")
+        try:
+            validate_pair_plan(plan)
+        except PairingError as error:
+            raise ValueError(str(error)) from error
+        if plan.content_hash != result.pair_plan_hash:
+            raise ValueError("pair result does not match the referenced pair plan hash")
+        if not plan.label_eligible:
+            raise ValueError("utility labels require a label-eligible counterfactual pair")
+        matches = [pair for pair in plan.pairs if pair.key == result.pair_key]
+        if (
+            len(matches) != 1
+            or result.failure_hash != result.pair_key.failure_hash
+            or result.adapter_digest != result.pair_key.adapter_digest
+        ):
+            raise ValueError("utility result must identify exactly one frozen pair")
         if not result.complete:
             raise ValueError("utility labels require complete paired results")
         if not result.failure_hash or not result.adapter_digest or not result.pair_plan_hash:

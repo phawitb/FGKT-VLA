@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version as distribution_version
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Protocol
@@ -12,6 +13,65 @@ import numpy as np
 from fcut_vla.libero.episode import EpisodeRecord
 from fcut_vla.libero.recorder import EpisodeIdentity, SanitizedEpisodeRecorder, hash_initial_state
 from fcut_vla.libero.rollout import PreparedObservation, image_moments_v1, run_single_episode
+
+
+CANONICAL_ADAPTER_REPO = "phawitbinabik/fgkt-vla-adapters"
+LIBERO_MAX_STEPS = {
+    "libero_spatial": 280,
+    "libero_object": 280,
+    "libero_goal": 300,
+    "libero_10": 520,
+}
+FROZEN_HF_LIBERO_VERSION = "0.1.4"
+
+
+def verified_hf_libero_version(expected: str = FROZEN_HF_LIBERO_VERSION) -> str:
+    try:
+        installed = distribution_version("hf-libero")
+    except PackageNotFoundError as error:
+        raise ValueError("hf-libero is not installed in the active runtime") from error
+    if installed != expected:
+        raise ValueError(
+            f"hf-libero version {installed!r} does not match frozen version {expected!r}"
+        )
+    return installed
+
+
+def canonical_environment_contract(
+    *, suite: str, task_id: int, lerobot_commit: str, hf_libero_version: str
+) -> dict[str, Any]:
+    if (
+        suite not in LIBERO_MAX_STEPS
+        or task_id < 0
+        or not lerobot_commit.strip()
+        or not hf_libero_version.strip()
+    ):
+        raise ValueError("canonical LIBERO environment identity is invalid")
+    return {
+        "schema_version": 1,
+        "suite": suite,
+        "task_id": task_id,
+        "max_steps": LIBERO_MAX_STEPS[suite],
+        "fps": 20,
+        "batch_size": 1,
+        "use_async_envs": False,
+        "init_states": True,
+        "hard_reset": True,
+        "control_mode": "relative",
+        "obs_type": "pixels_agent_pos",
+        "render_mode": "rgb_array",
+        "observation_shape": [360, 360],
+        "camera_names": ["agentview_image", "robot0_eye_in_hand_image"],
+        "camera_name_mapping": {
+            "agentview_image": "image",
+            "robot0_eye_in_hand_image": "image2",
+        },
+        "rename_map": OfficialLeRobotBindings.RENAME_MAP,
+        "settle_steps": 10,
+        "feature_extractor": "image_moments_v1",
+        "lerobot_commit": lerobot_commit,
+        "hf_libero_version": hf_libero_version,
+    }
 
 
 @dataclass(frozen=True)
@@ -73,6 +133,7 @@ class OfficialLeRobotBindings:
     RENAME_MAP = {"observation.images.image2": "observation.images.wrist_image"}
 
     def resolve_task(self, plan: LeRobotRecordPlan) -> RuntimeTask:
+        verified_hf_libero_version()
         from lerobot.envs.libero import TASK_SUITE_MAX_STEPS, _get_suite, get_task_init_states
 
         suite = _get_suite(plan.suite)
@@ -80,6 +141,8 @@ class OfficialLeRobotBindings:
             raise ValueError("task id is outside the selected LIBERO suite")
         installed = suite.get_task(plan.task_id)
         states = get_task_init_states(suite, plan.task_id)
+        if int(TASK_SUITE_MAX_STEPS[plan.suite]) != LIBERO_MAX_STEPS[plan.suite]:
+            raise ValueError("pinned LIBERO horizon contract drifted")
         return RuntimeTask(
             problem_id=str(installed.name),
             instruction=str(installed.language),

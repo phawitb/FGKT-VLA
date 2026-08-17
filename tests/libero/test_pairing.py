@@ -1,4 +1,6 @@
 from dataclasses import replace
+from hashlib import sha256
+import json
 
 import pytest
 
@@ -8,6 +10,7 @@ from fcut_vla.libero.pairing import (
     InitialState,
     PairingError,
     build_pair_plan,
+    validate_pair_plan,
     validate_completed_pair,
 )
 
@@ -37,6 +40,52 @@ def test_pair_plan_preserves_every_seed_and_initial_state():
     ]
     assert plan.content_hash
     assert plan.to_mapping()["content_hash"] == plan.content_hash
+
+
+def test_pair_plan_validation_rejects_hash_consistent_internal_mismatch():
+    plan = _plan()
+    pair = plan.pairs[0]
+    malformed = replace(
+        plan,
+        pairs=(replace(pair, candidate=replace(pair.candidate, role="baseline")),),
+    )
+    payload = malformed.to_mapping()
+    payload.pop("content_hash")
+    object.__setattr__(
+        malformed,
+        "content_hash",
+        sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+    )
+
+    with pytest.raises(PairingError, match="roles"):
+        validate_pair_plan(malformed)
+
+
+def test_pair_plan_rejects_label_eligible_self_replay_semantics():
+    with pytest.raises(PairingError, match="purpose and label eligibility"):
+        build_pair_plan(
+            failures=(FailureTarget("failure-sha", "problem"),),
+            adapters=(AdapterCandidate("adapter-sha", "repo", "rev"),),
+            seeds=(101,),
+            initial_states=(InitialState(0, "state-sha"),),
+            episode_budget=1,
+            environment={"suite": "libero_spatial"},
+            benchmark_hash="benchmark-sha",
+            baseline_policy=("base/repo", "base-rev"),
+            purpose="plumbing_self_replay",
+            label_eligible=True,
+        )
+
+    plan = replace(_plan(), purpose="plumbing_self_replay", label_eligible=True)
+    payload = plan.to_mapping()
+    payload.pop("content_hash")
+    object.__setattr__(
+        plan,
+        "content_hash",
+        sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+    )
+    with pytest.raises(PairingError, match="purpose and label eligibility"):
+        validate_pair_plan(plan)
 
 
 def test_completed_pair_requires_exact_key_roles_and_completion():

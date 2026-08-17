@@ -105,11 +105,16 @@ python -m pip install --no-build-isolation --no-cache-dir \
 CMAKE_POLICY_VERSION_MINIMUM=3.5 PYTHONNOUSERSITE=1 \
 python -m pip install -e './.deps/lerobot[libero]'
 
+# The environment identity and runtime guard require this exact release.
+PYTHONNOUSERSITE=1 python -m pip install --force-reinstall 'hf-libero==0.1.4'
+
 python -m pip check
 MUJOCO_GL=egl PYOPENGL_PLATFORM=egl PYTHONNOUSERSITE=1 python - <<'PY'
+from importlib.metadata import version
 import egl_probe
 import libero
 import mujoco
+assert version("hf-libero") == "0.1.4"
 print("LIBERO/EGL imports: OK")
 PY
 ```
@@ -178,15 +183,43 @@ command writes `failures.jsonl`, `failures.sha256`, and `SHARD.json`. Re-running
 requires `--resume`, which revalidates the exact episode content, window size,
 and artifact bytes rather than overwriting them.
 
+Freeze the first Stage C pair plan from those verified artifacts. This command
+does not use the GPU:
+
+```bash
+SHARD=runs/libero-failure-smoke/spatial-task0-seed101/failure-shard
+PAIR_PLAN=runs/libero-failure-smoke/spatial-task0-seed101/pair-plan.json
+
+PYTHONNOUSERSITE=1 python scripts/build_pair_plan.py \
+  --episode "$EPISODE" \
+  --failure-shard "$SHARD" \
+  --adapter-run "$RUN" \
+  --output "$PAIR_PLAN"
+
+# An existing plan is validated byte-for-byte instead of overwritten.
+PYTHONNOUSERSITE=1 python scripts/build_pair_plan.py \
+  --episode "$EPISODE" \
+  --failure-shard "$SHARD" \
+  --adapter-run "$RUN" \
+  --output "$PAIR_PLAN" \
+  --resume
+```
+
+This smoke plan deliberately compares the base policy with the same adapter
+that produced the failure. It is marked `purpose=plumbing_self_replay` and
+`label_eligible=false`; the utility-label builder verifies the plan hash and
+will reject it. It proves artifact wiring only and must not be reported as a
+repair counterfactual. A distinct verified candidate adapter is required for
+label-producing Stage C experiments.
+
 ## 5. Stages B-D safety status
 
-The bounded single-adapter LIBERO evaluator above is executable. Full failure
-generation, paired counterfactual collection, ranker training, repair
-evaluation, and continual orchestration still support **dry-run only**. Their
-immutable CLI contracts and privacy-safe paired-label primitives are frozen,
-but the full rollout recorder backend must be implemented and tested before
-removing those execution guards. This is intentional: the pipeline must not
-emit placeholder rollouts or fabricated paper metrics.
+The bounded evaluator, sanitized single-episode recorder, Stage B finalizer,
+and non-label-producing Stage C pair-plan smoke above are executable. Paired
+counterfactual execution with a distinct repair adapter, ranker training,
+repair evaluation, and continual orchestration still support **dry-run only**.
+This is intentional: the pipeline must not emit placeholder rollouts or
+fabricated paper metrics.
 
 The development configuration is for integration checks. Do not launch
 `configs/gpu/main.yaml` until development runs produce paired artifacts and

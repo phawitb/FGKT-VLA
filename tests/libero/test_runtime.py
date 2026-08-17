@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from fcut_vla.libero.rollout import PreparedObservation
 from fcut_vla.libero.runtime import (
@@ -10,6 +11,7 @@ from fcut_vla.libero.runtime import (
     RuntimeTask,
     record_lerobot_episode,
     _build_with_env_cleanup,
+    verified_hf_libero_version,
 )
 
 
@@ -132,3 +134,10 @@ def test_official_binding_closes_environment_when_policy_construction_fails():
         raise AssertionError("expected construction failure")
 
     assert closed == [True]
+
+
+def test_hf_libero_version_must_match_frozen_runtime(monkeypatch):
+    monkeypatch.setattr("fcut_vla.libero.runtime.distribution_version", lambda _: "0.1.5")
+
+    with pytest.raises(ValueError, match="hf-libero version"):
+        verified_hf_libero_version("0.1.4")

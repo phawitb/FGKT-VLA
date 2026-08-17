@@ -13,6 +13,12 @@ class PairingError(ValueError):
     """Raised when baseline and candidate rollouts cannot be compared exactly."""
 
 
+_PURPOSE_LABEL_ELIGIBILITY = {
+    "counterfactual_repair": True,
+    "plumbing_self_replay": False,
+}
+
+
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
@@ -72,6 +78,8 @@ class PairPlan:
     environment: dict[str, Any]
     baseline_policy_repo: str
     baseline_policy_revision: str
+    purpose: str
+    label_eligible: bool
     pairs: tuple[CounterfactualPair, ...]
     content_hash: str
 
@@ -82,6 +90,8 @@ class PairPlan:
             "environment": self.environment,
             "baseline_policy_repo": self.baseline_policy_repo,
             "baseline_policy_revision": self.baseline_policy_revision,
+            "purpose": self.purpose,
+            "label_eligible": self.label_eligible,
             "pairs": [asdict(pair) for pair in self.pairs],
         }
         return {**payload, "content_hash": self.content_hash}
@@ -90,11 +100,53 @@ class PairPlan:
         return _canonical(self.to_mapping()).decode()
 
 
+def validate_pair_plan(plan: PairPlan) -> PairPlan:
+    payload = plan.to_mapping()
+    claimed = payload.pop("content_hash")
+    computed = sha256(_canonical(payload)).hexdigest()
+    if claimed != computed:
+        raise PairingError("pair plan content hash does not match its canonical payload")
+    if plan.schema_version != 1 or not plan.pairs:
+        raise PairingError("pair plan schema or pair set is invalid")
+    _required(plan.benchmark_hash, "benchmark hash")
+    _required(plan.purpose, "pair-plan purpose")
+    _validate_purpose_eligibility(plan.purpose, plan.label_eligible)
+    environment_hash = sha256(_canonical(plan.environment)).hexdigest()
+    seen_keys: set[PairKey] = set()
+    for pair in plan.pairs:
+        if pair.key in seen_keys:
+            raise PairingError("pair plan contains a duplicate pair key")
+        seen_keys.add(pair.key)
+        if (pair.baseline.role, pair.candidate.role) != ("baseline", "candidate"):
+            raise PairingError("pair plan member roles are invalid")
+        if pair.baseline.key != pair.key or pair.candidate.key != pair.key:
+            raise PairingError("pair plan member keys do not match the frozen pair key")
+        if pair.key.environment_hash != environment_hash:
+            raise PairingError("pair plan environment hash is inconsistent")
+        if (
+            pair.baseline.initial_state_hash != pair.key.initial_state_hash
+            or pair.candidate.initial_state_hash != pair.key.initial_state_hash
+        ):
+            raise PairingError("pair plan initial-state identity is inconsistent")
+        if (pair.baseline.policy_repo, pair.baseline.policy_revision) != (
+            plan.baseline_policy_repo,
+            plan.baseline_policy_revision,
+        ):
+            raise PairingError("pair plan baseline policy identity is inconsistent")
+    return plan
+
+
 def _required(value: str, label: str) -> str:
     normalized = str(value).strip()
     if not normalized:
         raise PairingError(f"{label} must be non-empty")
     return normalized
+
+
+def _validate_purpose_eligibility(purpose: str, label_eligible: bool) -> None:
+    expected = _PURPOSE_LABEL_ELIGIBILITY.get(purpose)
+    if expected is None or bool(label_eligible) != expected:
+        raise PairingError("pair-plan purpose and label eligibility are inconsistent")
 
 
 def build_pair_plan(
@@ -107,6 +159,8 @@ def build_pair_plan(
     environment: Mapping[str, Any],
     benchmark_hash: str,
     baseline_policy: tuple[str, str],
+    purpose: str = "counterfactual_repair",
+    label_eligible: bool = True,
 ) -> PairPlan:
     failures = tuple(sorted(set(failures)))
     adapters = tuple(sorted(set(adapters)))
@@ -123,6 +177,8 @@ def build_pair_plan(
     benchmark_hash = _required(benchmark_hash, "benchmark hash")
     baseline_repo = _required(baseline_policy[0], "baseline policy repo")
     baseline_revision = _required(baseline_policy[1], "baseline policy revision")
+    purpose = _required(purpose, "pair-plan purpose")
+    _validate_purpose_eligibility(purpose, label_eligible)
     environment_payload = dict(environment)
     if not environment_payload:
         raise PairingError("environment settings must be non-empty")
@@ -169,16 +225,20 @@ def build_pair_plan(
         "environment": environment_payload,
         "baseline_policy_repo": baseline_repo,
         "baseline_policy_revision": baseline_revision,
+        "purpose": purpose,
+        "label_eligible": bool(label_eligible),
         "pairs": [asdict(pair) for pair in pairs_tuple],
     }
     return PairPlan(
-        1,
-        benchmark_hash,
-        environment_payload,
-        baseline_repo,
-        baseline_revision,
-        pairs_tuple,
-        sha256(_canonical(payload)).hexdigest(),
+        schema_version=1,
+        benchmark_hash=benchmark_hash,
+        environment=environment_payload,
+        baseline_policy_repo=baseline_repo,
+        baseline_policy_revision=baseline_revision,
+        purpose=purpose,
+        label_eligible=bool(label_eligible),
+        pairs=pairs_tuple,
+        content_hash=sha256(_canonical(payload)).hexdigest(),
     )
 
 
