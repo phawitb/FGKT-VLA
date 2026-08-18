@@ -30,6 +30,7 @@ from fcut_vla.repair.continuation import (
 )
 from fcut_vla.repair.training import (
     ContinuationTrainingPlan,
+    materialize_candidate_policy_config,
     render_continuation_command,
     validate_artifact_separation,
     validate_training_runtime,
@@ -363,6 +364,7 @@ def main(argv: list[str] | None = None) -> None:
         if completed.returncode:
             _prepare_training_attempt(run_dir, attempt_dir, resume=True)
             raise SystemExit(completed.returncode)
+        materialize_candidate_policy_config(attempt_plan)
         verify_repair_candidate(
             plan=attempt_plan,
             source_evidence=source_evidence,

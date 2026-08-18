@@ -172,6 +172,31 @@ def render_continuation_command(plan: ContinuationTrainingPlan) -> tuple[str, ..
     )
 
 
+def materialize_candidate_policy_config(plan: ContinuationTrainingPlan) -> Path:
+    """Write the effective policy config omitted by LeRobot's PEFT path save."""
+    checkpoint = (
+        plan.output_dir
+        / "checkpoints"
+        / f"{plan.recipe.hyperparameters.steps:06d}"
+        / "pretrained_model"
+    )
+    try:
+        config = json.loads((plan.source_pretrained_dir / "config.json").read_text())
+    except (FileNotFoundError, json.JSONDecodeError) as error:
+        raise RepairTrainingError("source policy config is missing or invalid") from error
+    if not isinstance(config, dict):
+        raise RepairTrainingError("source policy config must contain a mapping")
+    config["optimizer_lr"] = plan.recipe.hyperparameters.learning_rate
+    config["device"] = plan.recipe.device
+    content = json.dumps(config, sort_keys=True, separators=(",", ":")).encode()
+    path = checkpoint / "config.json"
+    if path.exists() and path.read_bytes() != content:
+        raise RepairTrainingError("candidate policy config differs from frozen effective config")
+    if not path.exists():
+        path.write_bytes(content)
+    return path
+
+
 def _source_int(evidence: Mapping[str, Any], key: str) -> int:
     value = evidence.get(key)
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:

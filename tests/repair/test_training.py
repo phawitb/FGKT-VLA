@@ -14,6 +14,7 @@ from fcut_vla.repair.continuation import (
 from fcut_vla.repair.training import (
     ContinuationTrainingPlan,
     RepairTrainingError,
+    materialize_candidate_policy_config,
     render_continuation_command,
     validate_artifact_separation,
     validate_training_runtime,
@@ -365,6 +366,25 @@ def test_candidate_verification_requires_new_digest_and_same_lora_contract(tmp_p
             source_evidence=_source_evidence(plan),
             candidate_log=log,
         )
+
+
+def test_materialize_candidate_policy_config_for_peft_path_checkpoint(tmp_path):
+    plan = _plan(tmp_path)
+    checkpoint = (
+        plan.output_dir
+        / "checkpoints"
+        / "000020"
+        / "pretrained_model"
+    )
+    checkpoint.mkdir(parents=True)
+
+    path = materialize_candidate_policy_config(plan)
+
+    assert path == checkpoint / "config.json"
+    assert json.loads(path.read_text()) == {
+        "device": "cuda",
+        "optimizer_lr": 1e-4,
+    }
 
 
 def test_candidate_verification_rejects_same_digest_or_target_drift(tmp_path):
