@@ -34,7 +34,7 @@ class ResolvedTask:
     initial_states_sha256: str
 
 
-def _normalize_instruction(value: str) -> str:
+def normalize_instruction(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
@@ -53,13 +53,13 @@ def resolve_task(
 ) -> ResolvedTask:
     alias = alias.strip()
     suite = suite.strip()
-    normalized = _normalize_instruction(instruction)
+    normalized = normalize_instruction(instruction)
     if not alias or not suite or not normalized:
         raise TaskResolutionError("alias, suite, and instruction must be non-empty")
     matches = [
         task
         for task in installed_tasks
-        if task.suite == suite and _normalize_instruction(task.instruction) == normalized
+        if task.suite == suite and normalize_instruction(task.instruction) == normalized
     ]
     if not matches:
         raise TaskResolutionError(
