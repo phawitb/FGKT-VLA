@@ -222,10 +222,10 @@ def test_continuation_command_resumes_source_and_filters_exact_episodes(tmp_path
     plan = training_plan_fixture(tmp_path, episode_indices=(3, 8))
     command = render_continuation_command(plan)
     assert command[:3] == (sys.executable, "-m", "lerobot.scripts.lerobot_train")
-    assert f"--config_path={plan.source_train_config}" in command
-    assert "--resume=true" in command
+    assert f"--policy.path={plan.source_pretrained_dir}" in command
+    assert "--resume=true" not in command
     assert "--dataset.episodes=[3,8]" in command
-    assert f"--steps={plan.total_training_steps}" in command
+    assert f"--steps={plan.recipe.hyperparameters.steps}" in command
     assert str(plan.output_dir) in " ".join(command)
 ```
 
@@ -238,11 +238,19 @@ Expected: missing training module/functions.
 - [ ] **Step 3: Implement pure plan rendering**
 
 `ContinuationTrainingPlan` must hold only validated paths and the immutable
-recipe. Resolve the source's latest completed checkpoint from verified adapter
-metadata and locate its LeRobot train configuration and training state. Render
-an argv tuple without a shell. Set `MUJOCO_GL=egl` only in the subprocess
-environment, not in the argv. Use total training steps equal to source completed
-step plus recipe continuation steps.
+recipe. Resolve the source's latest completed `pretrained_model` directory from
+verified adapter metadata. Load that PEFT adapter through `--policy.path` so
+LeRobot marks it trainable, but start a fresh optimizer and scheduler rather
+than trusting source optimizer/RNG files that are not bound by the source
+completion record. Bind the exact source adapter and policy configuration-file
+digests plus a canonical filename-to-digest manifest for every serialized
+preprocessor/postprocessor artifact (including normalizer state tensors) into
+the recipe, then revalidate them before launch. Pin the separate tokenizer Hub
+dependency to the immutable revision declared in the repair config and inject
+that revision through the guarded training entry point. Render an argv tuple
+without a shell. Set `MUJOCO_GL=egl`
+only in the subprocess environment, not in the argv. The new run executes
+exactly the recipe continuation-step count.
 
 - [ ] **Step 4: Write failing candidate-verification tests**
 

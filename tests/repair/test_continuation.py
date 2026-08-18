@@ -19,6 +19,7 @@ def _arguments():
     return {
         "source_run_hash": "source-run-sha",
         "source_adapter_sha256": "source-adapter-sha",
+        "source_adapter_config_sha256": "adapter-config-sha",
         "source_episode_sha256": "source-episode-sha",
         "failure_hash": "failure-sha",
         "task_alias": "libero_spatial.task0",
@@ -34,6 +35,9 @@ def _arguments():
         "hf_libero_version": "0.1.4",
         "python_version": "3.12.13",
         "torch_version": "2.11.0+cu130",
+        "device": "cuda",
+        "tokenizer_repo": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+        "tokenizer_revision": "tokenizer-sha",
         "hyperparameters": ContinuationHyperparameters(
             steps=20,
             batch_size=2,
@@ -41,6 +45,13 @@ def _arguments():
             training_seed=2026,
         ),
         "source_target_modules": ("model.layers.1.q_proj", "model.layers.0.q_proj"),
+        "source_policy_config_sha256": "policy-config-sha",
+        "source_preprocessor_sha256": "preprocessor-sha",
+        "source_postprocessor_sha256": "postprocessor-sha",
+        "source_processor_artifacts": (
+            ("policy_postprocessor.json", sha256(b"post").hexdigest()),
+            ("policy_preprocessor.json", sha256(b"pre").hexdigest()),
+        ),
     }
 
 
@@ -106,6 +117,12 @@ def test_recipe_hash_binds_episode_selection_and_is_canonical():
     assert validate_continuation_recipe(recipe) == recipe
     assert reordered.content_hash == recipe.content_hash
     assert changed.content_hash != recipe.content_hash
+    assert build_continuation_recipe(
+        **{**_arguments(), "device": "mps"}
+    ).content_hash != recipe.content_hash
+    assert build_continuation_recipe(
+        **{**_arguments(), "source_policy_config_sha256": "changed-config-sha"}
+    ).content_hash != recipe.content_hash
 
 
 def test_recipe_rejects_mutated_payload_with_old_hash():

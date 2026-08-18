@@ -53,6 +53,11 @@ class ContinuationRecipe:
     recipe_type: str
     source_run_hash: str
     source_adapter_sha256: str
+    source_adapter_config_sha256: str
+    source_policy_config_sha256: str
+    source_preprocessor_sha256: str
+    source_postprocessor_sha256: str
+    source_processor_artifacts: tuple[tuple[str, str], ...]
     source_episode_sha256: str
     failure_hash: str
     task_alias: str
@@ -69,6 +74,9 @@ class ContinuationRecipe:
     hf_libero_version: str
     python_version: str
     torch_version: str
+    device: str
+    tokenizer_repo: str
+    tokenizer_revision: str
     hyperparameters: ContinuationHyperparameters
     source_target_modules: tuple[str, ...]
     content_hash: str
@@ -122,6 +130,10 @@ def _validate_semantics(recipe: ContinuationRecipe) -> None:
     labels = {
         "source run hash": recipe.source_run_hash,
         "source adapter digest": recipe.source_adapter_sha256,
+        "source adapter config digest": recipe.source_adapter_config_sha256,
+        "source policy config digest": recipe.source_policy_config_sha256,
+        "source preprocessor digest": recipe.source_preprocessor_sha256,
+        "source postprocessor digest": recipe.source_postprocessor_sha256,
         "source episode digest": recipe.source_episode_sha256,
         "failure hash": recipe.failure_hash,
         "task alias": recipe.task_alias,
@@ -136,6 +148,9 @@ def _validate_semantics(recipe: ContinuationRecipe) -> None:
         "hf-libero version": recipe.hf_libero_version,
         "Python version": recipe.python_version,
         "PyTorch version": recipe.torch_version,
+        "device": recipe.device,
+        "tokenizer repository": recipe.tokenizer_repo,
+        "tokenizer revision": recipe.tokenizer_revision,
     }
     for label, value in labels.items():
         canonical = _required(value, label)
@@ -143,6 +158,24 @@ def _validate_semantics(recipe: ContinuationRecipe) -> None:
             canonical = " ".join(canonical.split())
         if value != canonical:
             raise ContinuationError(f"{label} is not in canonical form")
+    if recipe.device not in {"cpu", "cuda", "mps"}:
+        raise ContinuationError("continuation device is unsupported")
+    if (
+        not recipe.source_processor_artifacts
+        or recipe.source_processor_artifacts
+        != tuple(sorted(set(recipe.source_processor_artifacts)))
+        or any(
+            not isinstance(name, str)
+            or not name
+            or not name.startswith(("policy_preprocessor", "policy_postprocessor"))
+            or "/" in name
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            for name, digest in recipe.source_processor_artifacts
+        )
+    ):
+        raise ContinuationError("source processor artifact manifest is invalid")
     if (
         not recipe.episode_indices
         or any(not _is_exact_int(index) for index in recipe.episode_indices)
@@ -204,6 +237,11 @@ def build_continuation_recipe(
     *,
     source_run_hash: str,
     source_adapter_sha256: str,
+    source_adapter_config_sha256: str,
+    source_policy_config_sha256: str,
+    source_preprocessor_sha256: str,
+    source_postprocessor_sha256: str,
+    source_processor_artifacts: Iterable[tuple[str, str]],
     source_episode_sha256: str,
     failure_hash: str,
     task_alias: str,
@@ -219,6 +257,9 @@ def build_continuation_recipe(
     hf_libero_version: str,
     python_version: str,
     torch_version: str,
+    device: str,
+    tokenizer_repo: str,
+    tokenizer_revision: str,
     hyperparameters: ContinuationHyperparameters,
     source_target_modules: Iterable[str],
 ) -> ContinuationRecipe:
@@ -230,11 +271,25 @@ def build_continuation_recipe(
     if any(not isinstance(module, str) for module in raw_target_modules):
         raise ContinuationError("source target modules must contain only strings")
     target_modules = tuple(sorted(set(module.strip() for module in raw_target_modules)))
+    processor_artifacts = tuple(sorted(source_processor_artifacts))
     recipe = ContinuationRecipe(
         schema_version=1,
         recipe_type="failure_aligned_continuation_v1",
         source_run_hash=_required(source_run_hash, "source run hash"),
         source_adapter_sha256=_required(source_adapter_sha256, "source adapter digest"),
+        source_adapter_config_sha256=_required(
+            source_adapter_config_sha256, "source adapter config digest"
+        ),
+        source_policy_config_sha256=_required(
+            source_policy_config_sha256, "source policy config digest"
+        ),
+        source_preprocessor_sha256=_required(
+            source_preprocessor_sha256, "source preprocessor digest"
+        ),
+        source_postprocessor_sha256=_required(
+            source_postprocessor_sha256, "source postprocessor digest"
+        ),
+        source_processor_artifacts=processor_artifacts,
         source_episode_sha256=_required(source_episode_sha256, "source episode digest"),
         failure_hash=_required(failure_hash, "failure hash"),
         task_alias=_required(task_alias, "task alias"),
@@ -251,6 +306,9 @@ def build_continuation_recipe(
         hf_libero_version=_required(hf_libero_version, "hf-libero version"),
         python_version=_required(python_version, "Python version"),
         torch_version=_required(torch_version, "PyTorch version"),
+        device=_required(device, "device"),
+        tokenizer_repo=_required(tokenizer_repo, "tokenizer repository"),
+        tokenizer_revision=_required(tokenizer_revision, "tokenizer revision"),
         hyperparameters=hyperparameters,
         source_target_modules=target_modules,
         content_hash="",
