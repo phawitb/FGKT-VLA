@@ -233,6 +233,25 @@ def validate_continuation_recipe(recipe: ContinuationRecipe) -> ContinuationReci
     return recipe
 
 
+def continuation_recipe_from_mapping(mapping: Any) -> ContinuationRecipe:
+    if not isinstance(mapping, dict):
+        raise ContinuationError("continuation recipe must contain a mapping")
+    payload = dict(mapping)
+    try:
+        payload["hyperparameters"] = ContinuationHyperparameters(
+            **payload["hyperparameters"]
+        )
+        payload["episode_indices"] = tuple(payload["episode_indices"])
+        payload["source_target_modules"] = tuple(payload["source_target_modules"])
+        payload["source_processor_artifacts"] = tuple(
+            tuple(item) for item in payload["source_processor_artifacts"]
+        )
+        recipe = ContinuationRecipe(**payload)
+    except (KeyError, TypeError, ValueError) as error:
+        raise ContinuationError("continuation recipe mapping is invalid") from error
+    return validate_continuation_recipe(recipe)
+
+
 def build_continuation_recipe(
     *,
     source_run_hash: str,

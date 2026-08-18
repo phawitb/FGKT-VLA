@@ -10,6 +10,7 @@ from fcut_vla.libero.pairing import (
     InitialState,
     PairingError,
     build_pair_plan,
+    build_repair_pair_plan,
     validate_pair_plan,
     validate_completed_pair,
 )
@@ -131,3 +132,106 @@ def test_pair_plan_rejects_ambiguous_or_invalid_contract(kwargs, message):
 
     with pytest.raises(PairingError, match=message):
         build_pair_plan(**arguments)
+
+
+def test_repair_plan_uses_failed_adapter_as_distinct_baseline():
+    source_contract = {
+        "source_run_hash": "run-sha",
+        "source_episode_sha256": "episode-sha",
+        "task_alias": "libero_spatial.task0",
+        "problem_id": "problem",
+        "instruction": "instruction",
+        "dataset_repo": "dataset/repo",
+        "dataset_revision": "dataset-sha",
+        "base_policy_repo": "base/repo",
+        "base_policy_revision": "base-sha",
+        "lerobot_commit": "lerobot-sha",
+        "peft_version": "0.20.0",
+        "hf_libero_version": "0.1.4",
+    }
+    plan = build_repair_pair_plan(
+        failure=FailureTarget("failure-sha", "problem"),
+        source_adapter_sha256="source-sha",
+        candidate_metadata={
+            "recipe_sha256": "recipe-sha",
+            "source_adapter_sha256": "source-sha",
+            "candidate_adapter_sha256": "candidate-sha",
+        },
+        recipe={
+            "content_hash": "recipe-sha",
+            "source_adapter_sha256": "source-sha",
+            "failure_hash": "failure-sha",
+            "dataset_revision": "dataset-sha",
+            **source_contract,
+        },
+        seed=101,
+        initial_state=InitialState(0, "state-sha"),
+        environment={"suite": "libero_spatial"},
+        benchmark_hash="benchmark-sha",
+        source_contract=source_contract,
+    )
+
+    pair = plan.pairs[0]
+    assert pair.baseline.policy_revision == "source-sha"
+    assert pair.candidate.policy_revision == "candidate-sha"
+    assert plan.purpose == "counterfactual_repair"
+    assert plan.label_eligible is True
+
+
+def test_repair_plan_rejects_same_or_unbound_candidate():
+    source_contract = {
+        "source_run_hash": "run-sha",
+        "source_episode_sha256": "episode-sha",
+        "task_alias": "libero_spatial.task0",
+        "problem_id": "problem",
+        "instruction": "instruction",
+        "dataset_repo": "dataset/repo",
+        "dataset_revision": "dataset-sha",
+        "base_policy_repo": "base/repo",
+        "base_policy_revision": "base-sha",
+        "lerobot_commit": "lerobot-sha",
+        "peft_version": "0.20.0",
+        "hf_libero_version": "0.1.4",
+    }
+    arguments = {
+        "failure": FailureTarget("failure-sha", "problem"),
+        "source_adapter_sha256": "source-sha",
+        "candidate_metadata": {
+            "recipe_sha256": "recipe-sha",
+            "source_adapter_sha256": "source-sha",
+            "candidate_adapter_sha256": "source-sha",
+        },
+        "recipe": {
+            "content_hash": "recipe-sha",
+            "source_adapter_sha256": "source-sha",
+            "failure_hash": "failure-sha",
+            "dataset_revision": "dataset-sha",
+            **source_contract,
+        },
+        "seed": 101,
+        "initial_state": InitialState(0, "state-sha"),
+        "environment": {"suite": "libero_spatial"},
+        "benchmark_hash": "benchmark-sha",
+        "source_contract": source_contract,
+    }
+    with pytest.raises(PairingError, match="distinct verified adapters"):
+        build_repair_pair_plan(**arguments)
+
+    arguments["candidate_metadata"] = {
+        **arguments["candidate_metadata"],
+        "candidate_adapter_sha256": "candidate-sha",
+        "recipe_sha256": "other-recipe",
+    }
+    with pytest.raises(PairingError, match="candidate metadata"):
+        build_repair_pair_plan(**arguments)
+
+    arguments["candidate_metadata"]["candidate_adapter_sha256"] = None
+    arguments["candidate_metadata"]["recipe_sha256"] = "recipe-sha"
+    with pytest.raises(PairingError, match="must be a string"):
+        build_repair_pair_plan(**arguments)
+
+    arguments["candidate_metadata"]["candidate_adapter_sha256"] = "candidate-sha"
+    arguments["source_contract"] = {**source_contract, "problem_id": "other"}
+    arguments["recipe"] = {**arguments["recipe"], "problem_id": "other"}
+    with pytest.raises(PairingError, match="provenance"):
+        build_repair_pair_plan(**arguments)

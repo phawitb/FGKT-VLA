@@ -18,6 +18,23 @@ _PURPOSE_LABEL_ELIGIBILITY = {
     "plumbing_self_replay": False,
 }
 
+_REPAIR_SOURCE_CONTRACT_FIELDS = frozenset(
+    {
+        "source_run_hash",
+        "source_episode_sha256",
+        "task_alias",
+        "problem_id",
+        "instruction",
+        "dataset_repo",
+        "dataset_revision",
+        "base_policy_repo",
+        "base_policy_revision",
+        "lerobot_commit",
+        "peft_version",
+        "hf_libero_version",
+    }
+)
+
 
 def _canonical(value: object) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -136,8 +153,10 @@ def validate_pair_plan(plan: PairPlan) -> PairPlan:
     return plan
 
 
-def _required(value: str, label: str) -> str:
-    normalized = str(value).strip()
+def _required(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise PairingError(f"{label} must be a string")
+    normalized = value.strip()
     if not normalized:
         raise PairingError(f"{label} must be non-empty")
     return normalized
@@ -239,6 +258,68 @@ def build_pair_plan(
         label_eligible=bool(label_eligible),
         pairs=pairs_tuple,
         content_hash=sha256(_canonical(payload)).hexdigest(),
+    )
+
+
+def build_repair_pair_plan(
+    *,
+    failure: FailureTarget,
+    source_adapter_sha256: str,
+    candidate_metadata: Mapping[str, Any],
+    recipe: Mapping[str, Any],
+    seed: int,
+    initial_state: InitialState,
+    environment: Mapping[str, Any],
+    benchmark_hash: str,
+    source_contract: Mapping[str, Any],
+) -> PairPlan:
+    """Build one label-eligible pair from a verified failed adapter and its repair."""
+    from fcut_vla.libero.runtime import CANONICAL_ADAPTER_REPO
+
+    source_digest = _required(source_adapter_sha256, "source adapter digest")
+    candidate_digest = _required(
+        candidate_metadata.get("candidate_adapter_sha256", ""),
+        "candidate adapter digest",
+    )
+    if candidate_digest == source_digest:
+        raise PairingError("repair pair requires distinct verified adapters")
+    if (
+        candidate_metadata.get("source_adapter_sha256") != source_digest
+        or candidate_metadata.get("recipe_sha256") != recipe.get("content_hash")
+    ):
+        raise PairingError("candidate metadata is not bound to the repair recipe")
+    if (
+        recipe.get("source_adapter_sha256") != source_digest
+        or recipe.get("failure_hash") != failure.content_hash
+    ):
+        raise PairingError("repair recipe is not bound to the source failure")
+    if set(source_contract) != _REPAIR_SOURCE_CONTRACT_FIELDS:
+        raise PairingError("repair recipe provenance does not match verified source artifacts")
+    for field, expected in source_contract.items():
+        canonical = _required(expected, f"repair source contract {field}")
+        if canonical != expected or recipe.get(field) != expected:
+            raise PairingError(
+                "repair recipe provenance does not match verified source artifacts"
+            )
+    if failure.problem_id != source_contract["problem_id"]:
+        raise PairingError("repair recipe provenance does not match verified source artifacts")
+    return build_pair_plan(
+        failures=(failure,),
+        adapters=(
+            AdapterCandidate(
+                candidate_digest,
+                CANONICAL_ADAPTER_REPO,
+                candidate_digest,
+            ),
+        ),
+        seeds=(seed,),
+        initial_states=(initial_state,),
+        episode_budget=1,
+        environment=environment,
+        benchmark_hash=benchmark_hash,
+        baseline_policy=(CANONICAL_ADAPTER_REPO, source_digest),
+        purpose="counterfactual_repair",
+        label_eligible=True,
     )
 
 
