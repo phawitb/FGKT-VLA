@@ -169,7 +169,9 @@ def test_pinned_train_injects_tokenizer_revision(monkeypatch):
     monkeypatch.setattr(
         lerobot_train,
         "main",
-        lambda: AutoTokenizer.from_pretrained("tokenizer/repo"),
+        lambda: AutoTokenizer.from_pretrained(
+            "tokenizer/repo", revision="transformers-internal-revision"
+        ),
     )
 
     pinned_train_main(

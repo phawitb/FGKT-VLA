@@ -22,9 +22,6 @@ def main(argv: list[str] | None = None) -> None:
 
     def pinned_from_pretrained(cls, name, *call_args, **call_kwargs):
         if name == args.fgkt_tokenizer_repo:
-            requested = call_kwargs.get("revision")
-            if requested not in (None, args.fgkt_tokenizer_revision):
-                raise ValueError("tokenizer revision conflicts with frozen repair recipe")
             call_kwargs["revision"] = args.fgkt_tokenizer_revision
         return original(cls, name, *call_args, **call_kwargs)
 
